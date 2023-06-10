@@ -27,9 +27,9 @@ from functools import reduce
 from functools import partial
 
 from timeit import default_timer
-from utilities3 import *
+from lib.utilities3 import *
 
-from Adam import Adam
+from torch.optim import Adam
 
 torch.manual_seed(0)
 np.random.seed(0)
@@ -159,9 +159,15 @@ class FNO2d(nn.Module):
 ################################################################
 # configs
 ################################################################
-TRAIN_PATH = '/central/groups/tensorlab/khassibi/fourier_neural_operator/data/planes_channel180_minchan2.mat'
-TEST_PATH = '/central/groups/tensorlab/khassibi/fourier_neural_operator/data/planes_channel180_minchan2.mat'
-path_name = TRAIN_PATH[64:-4]
+# TRAIN_PATH = './data/planes_channel180_minchan.mat'
+# TEST_PATH = './data/planes_channel180_minchan.mat'
+# path_name = 'planes_channel180_minchan'
+
+
+TRAIN_PATH = './data/planes-001.mat'
+TEST_PATH = './data/planes-001.mat'
+path_name = 'planes'
+
 
 # QUESTION: Does the batch_size have to be 1 or can I make it back into 20?
 batch_size = 1
@@ -225,6 +231,7 @@ idx = torch.arange(ntrain + ntest)
 training_idx = idx[:ntrain]
 testing_idx = idx[-ntest:]
 
+print("Read from training path:", TRAIN_PATH)
 reader = MatReader(TRAIN_PATH)
 x_train = reader.read_field('P_plane').permute(2,0,1)[training_idx][:,::r,::r][:,:s1,:s2]
 x2_train = reader.read_field('V_plane').permute(2,0,1)[training_idx][:,::r,::r][:,:s1,:s2]
@@ -240,9 +247,10 @@ reader.load_file(TEST_PATH)
 x_test = reader.read_field('P_plane').permute(2,0,1)[testing_idx][:,::r,::r][:,:s1,:s2]
 y_test = reader.read_field('V_plane').permute(2,0,1)[testing_idx][:,::r,::r][:,:s1,:s2]
 
+print("Reading finished!")
+
 x_test = x_test[1:]
 y_prev_test = y_test[0]
-print("y_prev_train.shape:", y_prev_train.shape)
 y_test = y_test[1:]
 
 x2_test = torch.zeros(x_test.shape)
@@ -277,7 +285,7 @@ print(count_params(model))
 optimizer = Adam(model.parameters(), lr=learning_rate, weight_decay=1e-4)
 scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=step_size, gamma=gamma)
 
-output_path = '/central/groups/tensorlab/khassibi/fourier_neural_operator/outputs/'
+output_path = './outputs/'
 output_path += path_name
 output_path += '_observer.mat'
 
@@ -291,7 +299,6 @@ for ep in range(epochs):
     # for step, (x, y) in enumerate(train_set):
         x = x.reshape(1, s1, s2, 2)
         print("x.shape:", x.shape)
-        print("y_prev_train.shape:", y_prev_train.shape)
         # x[:, :, 1] = y_prev_train
         x, y = x.cuda(), y.cuda()
         print("x.shape:", x.shape)

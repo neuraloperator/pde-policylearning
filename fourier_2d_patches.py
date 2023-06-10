@@ -27,9 +27,9 @@ from functools import reduce
 from functools import partial
 
 from timeit import default_timer
-from utilities3 import *
+from lib.utilities3 import *
 
-from Adam import Adam
+from torch.optim import Adam
 
 torch.manual_seed(0)
 np.random.seed(0)
@@ -197,6 +197,7 @@ class SpectralConv2d(nn.Module):
         x = torch.fft.irfft2(out_ft, s=(x.size(-2), x.size(-1)))
         return x
 
+
 class FNO2d(nn.Module):
     def __init__(self, modes1, modes2,  width):
         super(FNO2d, self).__init__()
@@ -276,9 +277,11 @@ class FNO2d(nn.Module):
 ################################################################
 # configs
 ################################################################
-TRAIN_PATH = '/central/groups/tensorlab/khassibi/fourier_neural_operator/data/planes.mat'
-TEST_PATH = '/central/groups/tensorlab/khassibi/fourier_neural_operator/data/planes.mat'
-path_name = TRAIN_PATH[64:-4]
+
+TRAIN_PATH = './data/planes-001.mat'
+TEST_PATH = './data/planes-001.mat'
+path_name = 'planes'
+
 
 if path_name == 'planes':
     ntrain = 3000
@@ -332,7 +335,7 @@ wandb.init(
 idx = torch.randperm(ntrain + ntest)
 training_idx = idx[:ntrain]
 testing_idx = idx[-ntest:]
-
+print("Reading starts")
 reader = MatReader(TRAIN_PATH)
 x_train = reader.read_field('P_plane').permute(2,0,1)[training_idx]
 x_train = x_train.reshape(ntrain, s1, r1, s2, r2).permute(0, 2, 4, 1, 3).reshape(ntrain * r1 * r2, s1, s2)
@@ -344,6 +347,7 @@ x_test = reader.read_field('P_plane').permute(2,0,1)[testing_idx]
 x_test = x_test.reshape(ntest, s1, r1, s2, r2).permute(0, 2, 4, 1, 3).reshape(ntest * r1 * r2, s1, s2)
 y_test = reader.read_field('V_plane').permute(2,0,1)[testing_idx]
 y_test = y_test.reshape(ntest, s1, r1, s2, r2).permute(0, 2, 4, 1, 3).reshape(ntest * r1 * r2, s1, s2)
+print("Reading finishes")
 
 x_normalizer = UnitGaussianNormalizer(x_train)
 x_train = x_normalizer.encode(x_train)
@@ -369,7 +373,7 @@ print(count_params(model))
 optimizer = Adam(model.parameters(), lr=learning_rate, weight_decay=1e-4)
 scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=step_size, gamma=gamma)
 
-output_path = '/central/groups/tensorlab/khassibi/fourier_neural_operator/outputs/'
+output_path = './outputs/'
 output_path += path_name
 output_path += '_patches.mat'
 

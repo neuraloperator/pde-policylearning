@@ -27,7 +27,7 @@ from functools import reduce
 from functools import partial
 
 from timeit import default_timer
-from utilities3 import *
+from lib.utilities3 import *
 
 from Adam import Adam
 

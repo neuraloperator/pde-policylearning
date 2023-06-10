@@ -27,9 +27,9 @@ from functools import reduce
 from functools import partial
 
 from timeit import default_timer
-from utilities3 import *
+from lib.utilities3 import *
 
-from Adam import Adam
+from torch.optim import Adam
 
 torch.manual_seed(0)
 np.random.seed(0)
@@ -197,8 +197,9 @@ class SpectralConv2d(nn.Module):
         x = torch.fft.irfft2(out_ft, s=(x.size(-2), x.size(-1)))
         return x
 
+
 class FNO2d(nn.Module):
-    def __init__(self, modes1, modes2,  width):
+    def __init__(self, modes1, modes2, width):
         super(FNO2d, self).__init__()
 
         """
@@ -276,9 +277,15 @@ class FNO2d(nn.Module):
 ################################################################
 # configs
 ################################################################
-TRAIN_PATH = '/central/groups/tensorlab/khassibi/fourier_neural_operator/data/planes_channel180_minchan.mat'
-TEST_PATH = '/central/groups/tensorlab/khassibi/fourier_neural_operator/data/planes_channel180_minchan.mat'
-path_name = TRAIN_PATH[64:-4]
+# TRAIN_PATH = './data/planes_channel180_minchan.mat'
+# TEST_PATH = './data/planes_channel180_minchan.mat'
+# path_name = 'planes_channel180_minchan'
+project_name = 'fno_vs_unet'
+exp_name = 'shuffle-FNO-plane'
+TRAIN_PATH = './data/planes-001.mat'
+TEST_PATH = './data/planes-001.mat'
+path_name = 'planes'
+
 
 if path_name == 'planes':
     ntrain = 3000
@@ -309,7 +316,8 @@ elif 'planes_channel180_minchan' in path_name:
     s2 = 32//r  
 
 wandb.init(
-    project="FNO Planes",
+    project=project_name + "_" + path_name,
+    name=exp_name,
     config={
         "model": "FNO2d",
         "file_name": path_name,
@@ -340,7 +348,28 @@ wandb.init(
 idx = torch.randperm(ntrain + ntest)
 training_idx = idx[:ntrain]
 testing_idx = idx[-ntest:]
+# print("Reading starts")
+# reader = MatReader(TRAIN_PATH)
+# p_data, v_data = reader.read_field('P_plane').permute(2,0,1), reader.read_field('V_plane').permute(2,0,1)
+# p_mean, p_std = torch.mean(p_data, 0)[::r,::r][:s1,:s2], torch.std(p_data, 0)[::r,::r][:s1,:s2]
+# v_mean, v_std = torch.mean(v_data, 0)[::r,::r][:s1,:s2], torch.std(v_data, 0)[::r,::r][:s1,:s2]
 
+# x_train = p_data[training_idx][:,::r,::r][:,:s1,:s2]
+# y_train = v_data[training_idx][:,::r,::r][:,:s1,:s2]
+
+# reader.load_file(TEST_PATH)
+# x_test = p_data[testing_idx][:,::r,::r][:,:s1,:s2]
+# y_test = v_data[testing_idx][:,::r,::r][:,:s1,:s2]
+# print("Reading finishes")
+
+# x_normalizer = NormalizerGivenMeanStd(p_mean, p_std)
+# x_train = x_normalizer.encode(x_train)
+# x_test = x_normalizer.encode(x_test)
+
+# y_normalizer = NormalizerGivenMeanStd(v_mean, v_std)
+# y_train = y_normalizer.encode(y_train)
+
+print("Reading starts")
 reader = MatReader(TRAIN_PATH)
 x_train = reader.read_field('P_plane').permute(2,0,1)[training_idx][:,::r,::r][:,:s1,:s2]
 y_train = reader.read_field('V_plane').permute(2,0,1)[training_idx][:,::r,::r][:,:s1,:s2]
@@ -348,6 +377,7 @@ y_train = reader.read_field('V_plane').permute(2,0,1)[training_idx][:,::r,::r][:
 reader.load_file(TEST_PATH)
 x_test = reader.read_field('P_plane').permute(2,0,1)[testing_idx][:,::r,::r][:,:s1,:s2]
 y_test = reader.read_field('V_plane').permute(2,0,1)[testing_idx][:,::r,::r][:,:s1,:s2]
+print("Reading finishes")
 
 x_normalizer = UnitGaussianNormalizer(x_train)
 x_train = x_normalizer.encode(x_train)
@@ -373,7 +403,7 @@ print(count_params(model))
 optimizer = Adam(model.parameters(), lr=learning_rate, weight_decay=1e-4)
 scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=step_size, gamma=gamma)
 
-output_path = '/central/groups/tensorlab/khassibi/fourier_neural_operator/outputs/'
+output_path = './outputs/'
 output_path += path_name
 output_path += '_permute.mat'
 
@@ -385,15 +415,12 @@ for ep in range(epochs):
     train_l2 = 0
     for step, (x, y) in enumerate(train_loader):
         x, y = x.cuda(), y.cuda()
-
         optimizer.zero_grad()
         out = model(x).reshape(batch_size, s1, s2)
         out = y_normalizer.decode(out)
         y = y_normalizer.decode(y)
-
         loss = myloss(out.view(batch_size,-1), y.view(batch_size,-1))
         loss.backward()
-
         optimizer.step()
         train_l2 += loss.item()
         metrics = {"train/train_loss": loss.item(), 

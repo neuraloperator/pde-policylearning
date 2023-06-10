@@ -27,7 +27,7 @@ from functools import reduce
 from functools import partial
 
 from timeit import default_timer
-# from utilities3 import *
+from lib.utilities3 import *
 
 from torch.optim import Adam
 
@@ -154,8 +154,8 @@ class FNO2d(nn.Module):
 ################################################################
 # configs
 ################################################################
-TRAIN_PATH = './data/planes.mat'
-TEST_PATH = './data/planes.mat'
+TRAIN_PATH = './data/planes-001.mat'
+TEST_PATH = './data/planes-001.mat'
 path_name = 'planes'
 
 batch_size = 20
@@ -218,7 +218,7 @@ wandb.init(
 idx = torch.arange(ntrain + ntest)
 training_idx = idx[:ntrain]
 testing_idx = idx[-ntest:]
-
+print("Reading starts")
 reader = MatReader(TRAIN_PATH)
 x_train = reader.read_field('P_plane').permute(2,0,1)[training_idx][:,::r,::r][:,:s1,:s2]
 x2_train = reader.read_field('V_plane').permute(2,0,1)[training_idx][:,::r,::r][:,:s1,:s2]
@@ -234,6 +234,8 @@ reader.load_file(TEST_PATH)
 x_test = reader.read_field('P_plane').permute(2,0,1)[testing_idx][:,::r,::r][:,:s1,:s2]
 x2_test = reader.read_field('V_plane').permute(2,0,1)[testing_idx][:,::r,::r][:,:s1,:s2]
 y_test = reader.read_field('V_plane').permute(2,0,1)[testing_idx][:,::r,::r][:,:s1,:s2]
+print("Reading finishes")
+
 
 x_test = x_test[1:]
 y_test = y_test[1:]
@@ -264,7 +266,7 @@ print(count_params(model))
 optimizer = Adam(model.parameters(), lr=learning_rate, weight_decay=1e-4)
 scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=step_size, gamma=gamma)
 
-output_path = '/central/groups/tensorlab/khassibi/fourier_neural_operator/outputs/'
+output_path = './outputs/'
 output_path += path_name
 output_path += '_observer.mat'
 
@@ -347,8 +349,5 @@ for index in [0, 5, 10, 19]:
     plt.title('Prediction')
     cbar_ax = fig.add_axes([.92, 0.15, 0.04, 0.7])
     fig.colorbar(im3, cax=cbar_ax)
-
     wandb.log({f"chart_{index}": plt})
-
-
 wandb.finish()
