@@ -1,7 +1,7 @@
 import torch
 from torch import nn
 from torch.utils.data import TensorDataset, DataLoader
-from lib.utilities3 import LpLoss
+from libs.utilities3 import LpLoss
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib import cm

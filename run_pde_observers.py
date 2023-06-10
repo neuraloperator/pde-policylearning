@@ -27,10 +27,10 @@ from functools import reduce
 from functools import partial
 
 from timeit import default_timer
-from lib.utilities3 import *
-from lib.fno_models import *
-from lib.unet_models import *
-from lib.pde_data_loader import *
+from libs.utilities3 import *
+from libs.fno_models import *
+from libs.unet_models import *
+from libs.pde_data_loader import *
 from torch.optim import Adam
 
 torch.manual_seed(0)

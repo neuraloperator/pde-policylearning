@@ -27,7 +27,7 @@ from functools import reduce
 from functools import partial
 
 from timeit import default_timer
-from lib.utilities3 import *
+from libs.utilities3 import *
 
 from torch.optim import Adam
 
