@@ -22,14 +22,13 @@ from torch.nn.parameter import Parameter
 
 import matplotlib.pyplot as plt
 
-import operator
 from functools import reduce
 from functools import partial
 
 from timeit import default_timer
 from libs.utilities3 import *
-from libs.fno_models import *
 from libs.unet_models import *
+from libs.fno_models import *
 from libs.pde_data_loader import *
 from torch.optim import Adam
 
@@ -42,7 +41,7 @@ np.random.seed(0)
 # DATA_FOLDER = './data/planes-001'
 DATA_FOLDER = './data/planes_channel180_minchan'
 project_name = 'fno_vs_unet'
-exp_name = 'system-Unet-minmax-scale-0-1'
+exp_name = '1-system-FNO-original-loss'
 
 if 'minchan' in DATA_FOLDER:
     path_name = 'planes_channel180_minchan'
@@ -93,10 +92,12 @@ n_steps_per_epoch = math.ceil(len(train_loader.dataset) / batch_size)
 ################################################################
 # create model
 ################################################################
-model_name = 'UNet'
+model_name = 'FNO2dObserver'
 use_spectral_conv = False
-if model_name == 'FNO2d':
-    model = FNO2d(modes, modes, width, use_v_plane=use_v_plane).cuda()
+if model_name == 'FNO2dObserverOld':
+    model = FNO2dObserverOld(modes, modes, width, use_v_plane=use_v_plane).cuda()
+elif model_name == 'FNO2dObserver':
+    model = FNO2dObserver(modes, modes, width, use_v_plane=use_v_plane).cuda()
 else:
     model = UNet(use_spectral_conv=use_spectral_conv).cuda()
 
@@ -154,8 +155,8 @@ for ep in range(epochs):
         out_decoded = train_dataset.v_norm.cuda_decode(out)
         v_plane = v_plane.squeeze()
         v_plane_decoded = train_dataset.v_norm.cuda_decode(v_plane)
-        loss = myloss(out.view(batch_size, -1), v_plane.view(batch_size, -1))
-        # loss = myloss(out_decoded.view(batch_size, -1), v_plane_decoded.view(batch_size, -1))
+        # loss = myloss(out.view(batch_size, -1), v_plane.view(batch_size, -1))
+        loss = myloss(out_decoded.view(batch_size, -1), v_plane_decoded.view(batch_size, -1))
         loss.backward()
         optimizer.step()
         train_l2 += loss.item()
@@ -179,8 +180,8 @@ for ep in range(epochs):
             v_plane = v_plane.squeeze()
             p_plane_decoded = train_dataset.p_norm.cuda_decode(p_plane)
             v_plane_decoded = train_dataset.v_norm.cuda_decode(v_plane)
-            test_loss = myloss(out.view(batch_size, -1), v_plane.view(batch_size, -1)).item()
-            # test_loss = myloss(out_decoded.view(batch_size, -1), v_plane_decoded.view(batch_size, -1)).item()
+            # test_loss = myloss(out.view(batch_size, -1), v_plane.view(batch_size, -1)).item()
+            test_loss = myloss(out_decoded.view(batch_size, -1), v_plane_decoded.view(batch_size, -1)).item()
             test_l2 += test_loss
             test_metrics = {"test/test_loss": test_loss}
             if not debug:
