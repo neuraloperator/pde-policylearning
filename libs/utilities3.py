@@ -221,6 +221,10 @@ class RangeNormalizer(object):
 
         self.a = (high - low)/(mymax - mymin)
         self.b = -self.a*mymax + high
+        self.cuda_a = (high - low)/(mymax - mymin)
+        self.cuda_a.cuda()
+        self.cuda_b = -self.a*mymax + high
+        self.cuda_b.cuda()
 
     def encode(self, x):
         s = x.size()
@@ -233,6 +237,48 @@ class RangeNormalizer(object):
         s = x.size()
         x = x.view(s[0], -1)
         x = (x - self.b)/self.a
+        x = x.view(s)
+        return x
+    
+    def cuda_decode(self, x):        
+        s = x.size()
+        x = x.view(s[0], -1)
+        x = (x - self.cuda_b)/self.cuda_a
+        x = x.view(s)
+        return x
+
+
+# normalization, scaling by range
+class RangeNormalizerGivenMinMax(object):
+    def __init__(self, mymin, mymax, low=0.0, high=1.0):
+        super(RangeNormalizerGivenMinMax, self).__init__()
+        mymin = torch.tensor(mymin)
+        mymax = torch.tensor(mymax)
+        self.a = (high - low)/(mymax - mymin)
+        self.b = -self.a*mymax + high
+        self.cuda_a = (high - low)/(mymax - mymin)
+        self.cuda_a.cuda()
+        self.cuda_b = -self.a*mymax + high
+        self.cuda_b.cuda()
+
+    def encode(self, x):
+        s = x.size()
+        x = x.view(s[0], -1)
+        x = self.a*x + self.b
+        x = x.view(s)
+        return x
+
+    def decode(self, x):
+        s = x.size()
+        x = x.view(s[0], -1)
+        x = (x - self.b)/self.a
+        x = x.view(s)
+        return x
+    
+    def cuda_decode(self, x):        
+        s = x.size()
+        x = x.view(s[0], -1)
+        x = (x - self.cuda_b)/self.cuda_a
         x = x.view(s)
         return x
 

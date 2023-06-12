@@ -2,12 +2,6 @@
 @author: Zongyi Li
 This file is the Fourier Neural Operator for the 2D Navier—Stokes problem discussed in Section 5.3 in the [paper](https://arxiv.org/pdf/2010.08895.pdf).
 """
-################################################################
-# Connecting to WandB 
-################################################################
-import wandb
-wandb.login()
-WANDB_API_KEY = '78544c6ed5f52873b1588acd09ead571942d7dfd'
 
 ################################################################
 # Imports
@@ -38,15 +32,14 @@ np.random.seed(0)
 ################################################################
 fill_width = 6
 root_dir = './data'
-mat_name = 'planes_channel180_minchan'
-# mat_name = 'planes-001'
+# mat_name = 'planes_channel180_minchan'
+mat_name = 'planes-001'
 minchan = 'minchan' in mat_name
 mat_path = os.path.join(root_dir, mat_name + '.mat')
 save_dir = os.path.join(root_dir, mat_name)
 os.makedirs(save_dir, exist_ok=True)
 reader = MatReader(mat_path)
 print("Loading mat data ...")
-import pdb; pdb.set_trace()
 meta_data = {}
 # np.save(os.path.join(save_dir, f'metadata.npy'), meta_data)
 
@@ -55,8 +48,12 @@ meta_data[field_name] = {}
 field_data = reader.read_field(field_name).permute(2,0,1)
 filed_data_mean = torch.mean(field_data, 0)
 field_data_std = torch.std(field_data, 0)
+field_data_max = torch.max(field_data)
+field_data_min = torch.min(field_data)
 meta_data[field_name]['mean'] = np.array(filed_data_mean)
 meta_data[field_name]['std'] = np.array(field_data_std)
+meta_data[field_name]['max'] = np.array(field_data_max)
+meta_data[field_name]['min'] = np.array(field_data_min)
 
 for idx, one_data in enumerate(field_data):
     print(f"Handling {field_name} data idx {idx} ...")
@@ -69,8 +66,12 @@ meta_data[field_name] = {}
 field_data = reader.read_field(field_name).permute(2,0,1)
 filed_data_mean = torch.mean(field_data, 0)
 field_data_std = torch.std(field_data, 0)
+field_data_max = torch.max(field_data)
+field_data_min = torch.min(field_data)
 meta_data[field_name]['mean'] = np.array(filed_data_mean)
 meta_data[field_name]['std'] = np.array(field_data_std)
+meta_data[field_name]['max'] = np.array(field_data_max)
+meta_data[field_name]['min'] = np.array(field_data_min)
 
 for idx, one_data in enumerate(field_data):
     print(f"Handling {field_name} data idx {idx} ...")
