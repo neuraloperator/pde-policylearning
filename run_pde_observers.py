@@ -13,18 +13,14 @@ wandb.login()
 # Imports
 ################################################################
 import math
-
 import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.nn.parameter import Parameter
-
 import matplotlib.pyplot as plt
-
 from functools import reduce
 from functools import partial
-
 from timeit import default_timer
 from libs.utilities3 import *
 from libs.unet_models import *
@@ -41,14 +37,14 @@ np.random.seed(0)
 # DATA_FOLDER = './data/planes-001'
 DATA_FOLDER = './data/planes_channel180_minchan'
 project_name = 'fno_vs_unet'
-exp_name = '1-system-FNO-original-loss'
+exp_name = '2-system-UNet-debug'
 
 if 'minchan' in DATA_FOLDER:
     path_name = 'planes_channel180_minchan'
 else:
     path_name = 'planes'
     
-debug = False
+debug = True
 batch_size = 20
 learning_rate = 1e-3
 
@@ -84,15 +80,23 @@ training_idx = idx[:ntrain]
 testing_idx = idx[-ntest:]
 train_dataset = PDEDataset(DATA_FOLDER, training_idx, downsample_rate, x_range, y_range, use_patch=use_patch)
 test_dataset = PDEDataset(DATA_FOLDER, testing_idx, downsample_rate, x_range, y_range, use_patch=use_patch)
+
+# # sample and visualize data here
+# p_plane, v_plane = train_dataset[0]
+# p_plane, v_plane = p_plane.cuda(), v_plane.cuda()
+# v_plane = v_plane.squeeze()
+# v_plane_decoded = train_dataset.v_norm.cuda_decode(v_plane)
+# np.savetxt('outputs/v_plane_decoded.txt', v_plane_decoded.cpu().numpy())
+
 train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=batch_size, shuffle=not debug, drop_last=True)
 test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=batch_size, shuffle=False, drop_last=True)
 n_steps_per_epoch = math.ceil(len(train_loader.dataset) / batch_size)
 
-
 ################################################################
 # create model
 ################################################################
-model_name = 'FNO2dObserver'
+model_name = 'UNet'
+assert model_name in ['UNet', 'FNO2dObserverOld', 'FNO2dObserver'], "Model not supported!"
 use_spectral_conv = False
 if model_name == 'FNO2dObserverOld':
     model = FNO2dObserverOld(modes, modes, width, use_v_plane=use_v_plane).cuda()
@@ -105,15 +109,13 @@ else:
 # training and evaluation
 ################################################################
 print("param number:", count_params(model))
-
 optimizer = Adam(model.parameters(), lr=learning_rate, weight_decay=1e-4)
 scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=step_size, gamma=gamma)
-
 output_path = './outputs/'
 output_path += path_name
 output_path += '_observer.mat'
-
 myloss = LpLoss(size_average=False)
+# myloss = nn.MSELoss()
 
 if not debug:
     wandb.init(
@@ -142,6 +144,7 @@ if not debug:
             "use_patch": use_patch
             })
 
+best_loss = 10000000000000
 for ep in range(epochs):
     model.train()
     t1 = default_timer()
@@ -155,8 +158,8 @@ for ep in range(epochs):
         out_decoded = train_dataset.v_norm.cuda_decode(out)
         v_plane = v_plane.squeeze()
         v_plane_decoded = train_dataset.v_norm.cuda_decode(v_plane)
-        # loss = myloss(out.view(batch_size, -1), v_plane.view(batch_size, -1))
-        loss = myloss(out_decoded.view(batch_size, -1), v_plane_decoded.view(batch_size, -1))
+        loss = myloss(out.view(batch_size, -1), v_plane.view(batch_size, -1))
+        # loss = myloss(out_decoded.view(batch_size, -1), v_plane_decoded.view(batch_size, -1))
         loss.backward()
         optimizer.step()
         train_l2 += loss.item()
@@ -180,8 +183,8 @@ for ep in range(epochs):
             v_plane = v_plane.squeeze()
             p_plane_decoded = train_dataset.p_norm.cuda_decode(p_plane)
             v_plane_decoded = train_dataset.v_norm.cuda_decode(v_plane)
-            # test_loss = myloss(out.view(batch_size, -1), v_plane.view(batch_size, -1)).item()
-            test_loss = myloss(out_decoded.view(batch_size, -1), v_plane_decoded.view(batch_size, -1)).item()
+            test_loss = myloss(out.view(batch_size, -1), v_plane.view(batch_size, -1)).item()
+            # test_loss = myloss(out_decoded.view(batch_size, -1), v_plane_decoded.view(batch_size, -1)).item()
             test_l2 += test_loss
             test_metrics = {"test/test_loss": test_loss}
             if not debug:
@@ -190,14 +193,14 @@ for ep in range(epochs):
     train_l2/= ntrain
     test_l2 /= ntest
     avg_metrics = {"train/avg_train_loss": train_l2,
-                   "test/avg_test_loss": test_l2}
-    if not debug:
-        wandb.log(avg_metrics)
+                   "test/avg_test_loss": test_l2,}
 
     t2 = default_timer()
-    print(f"epoch: {ep}, time passed: {t2-t1}, train loss: {train_l2}, test loss: {test_l2}")
-
-    if ep == epochs - 1 or ep % 50 == 0:
+    print(f"epoch: {ep}, time passed: {t2-t1}, train loss: {train_l2}, test loss: {test_l2}, best loss: {best_loss}.")
+    if test_l2 < best_loss:
+        best_loss = test_l2
+        avg_metrics['best_loss'] = best_loss
+    # if ep == epochs - 1 or ep % 50 == 10:
         dat = {'x': p_plane_decoded.cpu().numpy(), 'pred': out_decoded.cpu().numpy(), 'y': v_plane_decoded.cpu().numpy(),}
         # scipy.io.savemat(output_path, mdict=dat)
         # Plots
@@ -218,9 +221,10 @@ for ep in range(epochs):
             fig.colorbar(im3, cax=cbar_ax)
             if not debug:
                 wandb.log({f"data_id_{index}": plt})
+        torch.save(model, f"./outputs/{path_name}_{exp_name}.pth")
 
-# torch.save(model, "/central/groups/tensorlab/khassibi/fourier_neural_operator/outputs/planes")
-
+    if not debug:
+        wandb.log(avg_metrics)
 ################################################################
 # making the plots
 ################################################################
