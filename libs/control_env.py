@@ -1,5 +1,6 @@
 import matlab.engine
 from libs.utilities3 import *
+from sklearn.metrics import mean_squared_error
 
 
 def to_m(numpy_a):
@@ -12,7 +13,7 @@ def to_m(numpy_a):
     
 
 class NSControl:
-    def __init__(self, timestep):
+    def __init__(self, timestep, noise_scale):
         print("Lauching matlab...")
         self.eng = matlab.engine.start_matlab()
         print("Lauching finished!")
@@ -50,6 +51,9 @@ class NSControl:
         self.U = self.UU[0:self.Nx, :, 1:self.Nz+1]
         self.V = self.VV[1:self.Nx+1, :, 1:self.Nz+1]
         self.W = self.WW[1:self.Nx+1, :, 0:self.Nz]
+        self.U_gt = self.U.copy()
+        self.V_gt = self.V.copy()
+        self.W_gt = self.W.copy()
         np.random.seed(0)
         self.s = np.random.default_rng()
         # Call matlab main directly.
@@ -81,11 +85,21 @@ class NSControl:
         self.DD[0, 0] += 1 / (self.y[1] - self.y[0]) / (self.yg[1] - self.yg[0])
         self.DD[-1, -1] += 1 / (self.y[self.Ny-1] - self.y[self.Ny-2]) / (self.yg[self.Ny] - self.yg[self.Ny-1])
 
-        init_div = self.compute_div()
-        print(f"Initially, the divergence is {np.sum(init_div)}.")
-    
+        self.add_random_noise(noise_scale)
+        print(f"Initially, the divergence is {self.reward_div()}, the mse is {self.reward_gt()}")
         init_p = self.compute_pressure()
         init_opV2 = self.rand_control(init_p)
+
+    def add_random_noise(self, noise_scale, overwrite=False):
+        if overwrite:
+            self.U = np.random.normal(scale=noise_scale, size=self.U.shape)
+            # self.V = np.random.normal(scale=noise_scale, size=self.V.shape)
+            # self.W = np.random.normal(scale=noise_scale, size=self.W.shape)           
+        else:
+            self.U += np.random.normal(scale=noise_scale, size=self.U.shape)
+            # self.V += np.random.normal(scale=noise_scale, size=self.V.shape)
+            # self.W += np.random.normal(scale=noise_scale, size=self.W.shape)
+        return
 
     def compute_div(self):
         div = np.zeros((self.Nx, self.Ny-1, self.Nz))
@@ -104,6 +118,30 @@ class NSControl:
             div[:, j, :] = ux + uy + uz
         return div
 
+    def reward_div(self, bound=-1):
+        reward = - abs(np.sum(self.compute_div()))
+        if reward < bound:
+            reward = bound
+        return reward
+
+    def reward_gt(self, bound=-1):
+        reward = 0
+        reward -= mean_squared_error(self.U_gt.flatten(), self.U.flatten())
+        reward -= mean_squared_error(self.V_gt.flatten(), self.V.flatten())
+        reward -= mean_squared_error(self.W_gt.flatten(), self.W.flatten())
+        if reward < bound:
+            reward = bound
+        return reward
+
+    def reward_td(self, prev_U, prev_V, prev_W, bound=-1):
+        reward = 0
+        reward -= mean_squared_error(prev_U.flatten(), self.U.flatten())
+        reward -= mean_squared_error(prev_V.flatten(), self.V.flatten())
+        reward -= mean_squared_error(prev_W.flatten(), self.W.flatten())
+        if reward < bound:
+            reward = bound
+        return reward
+
     def compute_pressure(self,):
         # this is the observation function
         P  = self.eng.compute_pressure(to_m(self.U), to_m(self.V), to_m(self.W), to_m(self.nu), to_m(self.dPdx), to_m(self.y), to_m(self.ym), \
@@ -118,12 +156,15 @@ class NSControl:
         # Perform one step in the environment
         # Update state, calculate reward, check termination condition, etc.
         # Return the next state, reward, termination flag, and additional info
+        prev_U, prev_V, prev_W = self.U.copy(), self.V.copy(), self.W.copy()
         U, V, W = self.eng.time_advance_RK3(opV2, to_m(self.U), to_m(self.V), to_m(self.W), to_m(self.nu), to_m(self.dPdx), \
         to_m(self.y), to_m(self.ym), to_m(self.yg), to_m(self.dx), to_m(self.dz), to_m(self.dt), to_m(self.kxx), to_m(self.kzz), \
             to_m(self.Nx), to_m(self.Ny), to_m(self.Nz), to_m(self.DD), nargout=3)
         self.U, self.V, self.W = np.array(U), np.array(V), np.array(W)
-        next_state = self.compute_pressure()                # Next state after taking the action
-        reward = - abs(np.sum(self.compute_div()))          # Reward obtained from the action
-        done = False                                        # Termination flag indicating if the episode is done
-        info = {}                                           # Additional information
-        return next_state, reward, done, info
+        next_state = self.compute_pressure()                    # Next state after taking the action
+        div = self.reward_div()
+        gt_diff = self.reward_gt()
+        speed_diff = self.reward_td(prev_U, prev_V, prev_W)
+        done = False                                            # Termination flag indicating if the episode is done
+        info = {'-|divergence|': div, '-|now - unnoised|': gt_diff, '-|now - prev|': speed_diff} # Additional information
+        return next_state, div, done, info
