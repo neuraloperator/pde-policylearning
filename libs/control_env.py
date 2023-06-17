@@ -1,5 +1,6 @@
 import matlab.engine
 from libs.utilities3 import *
+from libs.visualization import *
 from sklearn.metrics import mean_squared_error
 
 
@@ -144,10 +145,38 @@ class NSControl:
 
     def compute_pressure(self,):
         # this is the observation function
-        P  = self.eng.compute_pressure(to_m(self.U), to_m(self.V), to_m(self.W), to_m(self.nu), to_m(self.dPdx), to_m(self.y), to_m(self.ym), \
+        self.P  = self.eng.compute_pressure(to_m(self.U), to_m(self.V), to_m(self.W), to_m(self.nu), to_m(self.dPdx), to_m(self.y), to_m(self.ym), \
         to_m(self.yg), to_m(self.dx), to_m(self.dz), to_m(self.kxx), to_m(self.kzz), to_m(self.Nx), to_m(self.Ny), to_m(self.Nz), to_m(self.DD))
-        return np.array(P)
+        self.P = np.array(self.P)
+        return self.P
 
+    def get_state(self):
+        pressure = self.compute_pressure()                    # Next state after taking the action
+        next_state = np.squeeze(-0.5 * (pressure[:, -1, :] + pressure[:, -2, :]))
+        return next_state
+    
+    def vis_state(self, ):
+        pressure = self.compute_pressure()
+        # get top view
+        mid_index = pressure.shape[0] // 2
+        side_pressure = pressure[mid_index, :, :]
+        side_speed_z = self.U[mid_index, 1:-1, :]
+        side_speed_y = self.V[mid_index, 1:, :]
+        top_view = visualize_pressure_speed(side_pressure, speed_x=side_speed_z, speed_y=side_speed_y, vis_img=False)
+        # get front view
+        mid_index = pressure.shape[2] // 2
+        front_pressure = pressure[:, :,mid_index].transpose()
+        side_speed_x = self.W[:, 1:-1, mid_index].transpose()
+        side_speed_y = self.V[:, 1:, mid_index].transpose()
+        front_view = visualize_pressure_speed(front_pressure, speed_x=side_speed_x, speed_y=side_speed_y, vis_img=False)
+        # get side view
+        mid_index = pressure.shape[1] // 2
+        side_pressure = pressure[:, mid_index, :]
+        side_speed_x = self.W[:, mid_index, :]
+        side_speed_z = self.U[:, mid_index, :]
+        side_view = visualize_pressure_speed(side_pressure, speed_x=side_speed_x, speed_y=side_speed_z, quiver_scale=0.50, vis_img=True, )
+        return top_view, front_view, side_view
+    
     def rand_control(self, P):
         opV2 = self.eng.compute_opposition(to_m(P))
         return np.array(opV2)
@@ -161,10 +190,10 @@ class NSControl:
         to_m(self.y), to_m(self.ym), to_m(self.yg), to_m(self.dx), to_m(self.dz), to_m(self.dt), to_m(self.kxx), to_m(self.kzz), \
             to_m(self.Nx), to_m(self.Ny), to_m(self.Nz), to_m(self.DD), nargout=3)
         self.U, self.V, self.W = np.array(U), np.array(V), np.array(W)
-        next_state = self.compute_pressure()                    # Next state after taking the action
+        next_state = self.get_state()
         div = self.reward_div()
         gt_diff = self.reward_gt()
         speed_diff = self.reward_td(prev_U, prev_V, prev_W)
-        done = False                                            # Termination flag indicating if the episode is done
-        info = {'-|divergence|': div, '-|now - unnoised|': gt_diff, '-|now - prev|': speed_diff} # Additional information
+        done = False                                                                                # Termination flag indicating if the episode is done
+        info = {'-|divergence|': div, '-|now - unnoised|': gt_diff, '-|now - prev|': speed_diff}    # Additional information
         return next_state, div, done, info

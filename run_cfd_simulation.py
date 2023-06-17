@@ -327,13 +327,11 @@ def main():
         v_next[:, -1] = 0.0
         v_next[-1, :] = 0.0
 
-
         # Advance in time
         u_prev = u_next
         v_prev = v_next
         p_prev = p_next
     
-
     # The [::2, ::2] selects only every second entry (less cluttering plot)
     plt.style.use("dark_background")
     plt.figure()

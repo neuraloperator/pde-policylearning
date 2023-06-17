@@ -26,6 +26,7 @@ from libs.utilities3 import *
 from libs.unet_models import *
 from libs.fno_models import *
 from libs.pde_data_loader import *
+from tqdm import tqdm
 from torch.optim import Adam
 
 torch.manual_seed(0)
@@ -37,7 +38,7 @@ np.random.seed(0)
 # DATA_FOLDER = './data/planes-001'
 DATA_FOLDER = './data/planes_channel180_minchan'
 project_name = 'fno_vs_unet'
-exp_name = '2-system-UNet-debug'
+exp_name = '3-system-UNet-no-scheduler'
 
 if 'minchan' in DATA_FOLDER:
     path_name = 'planes_channel180_minchan'
@@ -109,8 +110,9 @@ else:
 # training and evaluation
 ################################################################
 print("param number:", count_params(model))
-optimizer = Adam(model.parameters(), lr=learning_rate, weight_decay=1e-4)
-scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=step_size, gamma=gamma)
+weight_decay = 1e-4
+optimizer = Adam(model.parameters(), lr=learning_rate, weight_decay=weight_decay)
+# scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=step_size, gamma=gamma)
 output_path = './outputs/'
 output_path += path_name
 output_path += '_observer.mat'
@@ -145,7 +147,7 @@ if not debug:
             })
 
 best_loss = 10000000000000
-for ep in range(epochs):
+for ep in tqdm(range(epochs)):
     model.train()
     t1 = default_timer()
     train_l2 = 0
@@ -169,7 +171,7 @@ for ep in range(epochs):
             # Log train metrics to wandb 
             wandb.log(metrics)
 
-    scheduler.step()
+    # scheduler.step()
 
     model.eval()
     test_l2 = 0.0
@@ -196,32 +198,31 @@ for ep in range(epochs):
                    "test/avg_test_loss": test_l2,}
 
     t2 = default_timer()
-    print(f"epoch: {ep}, time passed: {t2-t1}, train loss: {train_l2}, test loss: {test_l2}, best loss: {best_loss}.")
     if test_l2 < best_loss:
         best_loss = test_l2
         avg_metrics['best_loss'] = best_loss
-    # if ep == epochs - 1 or ep % 50 == 10:
         dat = {'x': p_plane_decoded.cpu().numpy(), 'pred': out_decoded.cpu().numpy(), 'y': v_plane_decoded.cpu().numpy(),}
         # scipy.io.savemat(output_path, mdict=dat)
         # Plots
-        for index in [0, 5, 10, 19]:
-            vmin = dat['y'][index, :, :].min()
-            vmax = dat['y'][index, :, :].max()
-            fig, axes = plt.subplots(nrows=1, ncols=4)
-            plt.subplot(1, 3, 1)
-            im1 = plt.imshow(dat['x'][index, :, :, 0], cmap='jet', aspect='auto')
-            plt.title('Input')
-            plt.subplot(1, 3, 2)
-            im2 = plt.imshow(dat['y'][index, :, :], cmap='jet', aspect='auto', vmin=vmin, vmax=vmax)
-            plt.title('True Output')
-            plt.subplot(1, 3, 3)
-            im3 = plt.imshow(dat['pred'][index, :, :], cmap='jet', aspect='auto', vmin=vmin, vmax=vmax)
-            plt.title('Prediction')
-            cbar_ax = fig.add_axes([.92, 0.15, 0.04, 0.7])
-            fig.colorbar(im3, cax=cbar_ax)
-            if not debug:
+        if not debug:
+            for index in [0, 5, 10, 19]:
+                vmin = dat['y'][index, :, :].min()
+                vmax = dat['y'][index, :, :].max()
+                fig, axes = plt.subplots(nrows=1, ncols=4)
+                plt.subplot(1, 3, 1)
+                im1 = plt.imshow(dat['x'][index, :, :, 0], cmap='jet', aspect='auto')
+                plt.title('Input')
+                plt.subplot(1, 3, 2)
+                im2 = plt.imshow(dat['y'][index, :, :], cmap='jet', aspect='auto', vmin=vmin, vmax=vmax)
+                plt.title('True Output')
+                plt.subplot(1, 3, 3)
+                im3 = plt.imshow(dat['pred'][index, :, :], cmap='jet', aspect='auto', vmin=vmin, vmax=vmax)
+                plt.title('Prediction')
+                cbar_ax = fig.add_axes([.92, 0.15, 0.04, 0.7])
+                fig.colorbar(im3, cax=cbar_ax)
                 wandb.log({f"data_id_{index}": plt})
-        torch.save(model, f"./outputs/{path_name}_{exp_name}.pth")
+            torch.save(model, f"./outputs/{path_name}_{exp_name}.pth")
+    print(f"epoch: {ep}, time passed: {t2-t1}, train loss: {train_l2}, test loss: {test_l2}, best loss: {best_loss}.")
 
     if not debug:
         wandb.log(avg_metrics)

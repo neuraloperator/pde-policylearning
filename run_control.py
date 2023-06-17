@@ -1,5 +1,4 @@
 import wandb
-wandb.login()
 import numpy as np
 from libs.utilities3 import *
 from libs.control_env import *
@@ -26,9 +25,11 @@ model_name = 'UNet'
 use_v_plane = False
 modes = 12
 width = 32
-debug = True
-timestep = 1000
-noise_scale = 1.0
+close_wandb = True
+if not close_wandb:
+    wandb.login()
+timestep = 100
+noise_scale = 0.0
 assert model_name in ['UNet', 'FNO2dObserverOld', 'FNO2dObserver'], "Model not supported!"
 use_spectral_conv = False
 
@@ -49,8 +50,8 @@ elif 'planes_channel180_minchan' in path_name:
     ntest = 2501
 else:
     raise RuntimeError("Type not supported!")
-# policy_name = 'bc'
-policy_name = 'rand'
+policy_name = 'bc'
+# policy_name = 'rand'
 assert policy_name in ['rand', 'bc'], 'Not supported policy.'
 reward_type = 'mse'
 assert reward_type in ['mse', 'div'], "Not supported reward type."
@@ -98,7 +99,7 @@ for one_v in display_variables:
     exp_name += str(config_dict[one_v])
     exp_name += "; "
 
-if not debug:
+if not close_wandb:
     wandb.init(
         project=project_name + "_" + path_name,
         name=exp_name,
@@ -130,32 +131,41 @@ demo_dataset = PDEDataset(DATA_FOLDER, [1, 2, 3, 4, 5], downsample_rate, x_range
 ################################################################
 # main control loop
 ################################################################
-pressure_v, opV2_v = [], []
+pressure_v, opV2_v, top_view_v, front_view_v, side_view_v = [], [], [], [], []
 for i in tqdm(range(timestep)):
-    pressure = control_env.compute_pressure()
     # pressure: [32, 32], opV2: [32, 32]
-    # opV2 = control_env.rand_control(pressure)
-    pressure = torch.tensor(pressure).cuda()
-    pressure = demo_dataset.p_norm.encode(pressure)
-    pressure = pressure.reshape(-1, x_range, y_range, 1).float()
+    side_pressure = control_env.get_state()
+    side_pressure = torch.tensor(side_pressure).cuda()
+    side_pressure = demo_dataset.p_norm.encode(side_pressure)
+    side_pressure = side_pressure.reshape(-1, x_range, y_range, 1).float()
     if policy_name == 'rand':
-        opV2 = control_env.rand_control(pressure)
+        opV2 = control_env.rand_control(side_pressure)
         opV2 *= rand_scale
     else:
-        opV2 = model(pressure, None).reshape(-1, x_range, y_range)
+        opV2 = model(side_pressure, None).reshape(-1, x_range, y_range)
         opV2 = demo_dataset.p_norm.decode(opV2.cpu())
         opV2 = opV2.detach().numpy()
-    pressure, reward, done, info = control_env.step(opV2)
-    if not debug:
+    side_pressure, reward, done, info = control_env.step(opV2)
+    if not close_wandb:
         wandb.log(info)
     if i % vis_interval == 0:
+        top_view, front_view, side_view = control_env.vis_state()
+        top_view_v.append(top_view)
+        front_view_v.append(front_view)
+        side_view_v.append(side_view)
         cur_opV2_image = matrix2image(opV2, extend_value=0.2)
-        cur_pressure_image = matrix2image(pressure, extend_value=0.2)
+        cur_pressure_image = matrix2image(side_pressure, extend_value=0.2)
         opV2_v.append(cur_opV2_image)
         pressure_v.append(cur_pressure_image)
     print(f"timestep: {i}, scores: {info}")
 
-print("Saving results to video ...")
-save_images_to_video(opV2_v, os.path.join(output_dir, exp_name + '; v_plane.mp4'), fps=15)
-save_images_to_video(pressure_v, os.path.join(output_dir, exp_name + '; pressure.mp4'), fps=15)
+# save visualization results
+video_output_dir = os.path.join(output_dir, exp_name)
+os.makedirs(video_output_dir, exist_ok=True)
+print(f"Saving results to folder {video_output_dir}.")
+save_images_to_video(top_view_v, os.path.join(video_output_dir, exp_name + 'top_view.mp4'), fps=15)
+save_images_to_video(front_view_v, os.path.join(video_output_dir, exp_name + 'front_view.mp4'), fps=15)
+save_images_to_video(side_view_v, os.path.join(video_output_dir, exp_name + 'side_view.mp4'), fps=15)
+save_images_to_video(opV2_v, os.path.join(video_output_dir, exp_name + 'v_plane.mp4'), fps=15)
+save_images_to_video(pressure_v, os.path.join(video_output_dir, exp_name + 'pressure.mp4'), fps=15)
 print("Program finished!")
