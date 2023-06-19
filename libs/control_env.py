@@ -89,17 +89,22 @@ class NSControl:
         self.add_random_noise(noise_scale)
         print(f"Initially, the divergence is {self.reward_div()}, the mse is {self.reward_gt()}")
         init_p = self.compute_pressure()
-        init_opV2 = self.rand_control(init_p)
+        # Used in normalization
+        self.speed_min = min(self.U.min(), self.V.min(), self.W.min())
+        self.speed_max = max(self.U.max(), self.V.max(), self.W.max())
+        self.p_min = max(-2.0, init_p.min())
+        self.p_max = min(init_p.max(), 1.5)
+        # init_opV2 = self.rand_control(init_p)
 
     def add_random_noise(self, noise_scale, overwrite=False):
         if overwrite:
             self.U = np.random.normal(scale=noise_scale, size=self.U.shape)
-            # self.V = np.random.normal(scale=noise_scale, size=self.V.shape)
-            # self.W = np.random.normal(scale=noise_scale, size=self.W.shape)           
+            self.V = np.random.normal(scale=noise_scale, size=self.V.shape)
+            self.W = np.random.normal(scale=noise_scale, size=self.W.shape)           
         else:
             self.U += np.random.normal(scale=noise_scale, size=self.U.shape)
-            # self.V += np.random.normal(scale=noise_scale, size=self.V.shape)
-            # self.W += np.random.normal(scale=noise_scale, size=self.W.shape)
+            self.V += np.random.normal(scale=noise_scale, size=self.V.shape)
+            self.W += np.random.normal(scale=noise_scale, size=self.W.shape)
         return
 
     def compute_div(self):
@@ -119,7 +124,7 @@ class NSControl:
             div[:, j, :] = ux + uy + uz
         return div
 
-    def reward_div(self, bound=-1):
+    def reward_div(self, bound=-10):
         reward = - abs(np.sum(self.compute_div()))
         if reward < bound:
             reward = bound
@@ -155,26 +160,36 @@ class NSControl:
         next_state = np.squeeze(-0.5 * (pressure[:, -1, :] + pressure[:, -2, :]))
         return next_state
     
-    def vis_state(self, ):
+    def vis_state(self, vis_img=False, sample_slice_top=15, sample_slice_others=10):
+        p_min, p_max = -0.05, 0.05
         pressure = self.compute_pressure()
-        # get top view
-        mid_index = pressure.shape[0] // 2
-        side_pressure = pressure[mid_index, :, :]
-        side_speed_z = self.U[mid_index, 1:-1, :]
-        side_speed_y = self.V[mid_index, 1:, :]
-        top_view = visualize_pressure_speed(side_pressure, speed_x=side_speed_z, speed_y=side_speed_y, vis_img=False)
         # get front view
-        mid_index = pressure.shape[2] // 2
-        front_pressure = pressure[:, :,mid_index].transpose()
-        side_speed_x = self.W[:, 1:-1, mid_index].transpose()
-        side_speed_y = self.V[:, 1:, mid_index].transpose()
-        front_view = visualize_pressure_speed(front_pressure, speed_x=side_speed_x, speed_y=side_speed_y, vis_img=False)
+        mid_index = pressure.shape[2] // sample_slice_others
+        front_pressure = pressure[:, :, mid_index].transpose()
+        u_in_xy = self.U[:, 1:-1, mid_index].transpose()
+        v_in_xy = self.V[:, 1:, mid_index].transpose()
+        front_view = visualize_pressure_speed(front_pressure, pressure_min=p_min, pressure_max=p_max, \
+            speed_horizontal=v_in_xy, speed_vertical=u_in_xy, vis_img=vis_img, vis_name='front', quiver_scale=0.3, \
+            x_sample_interval=2, y_sample_interval=5)
+        
+        # get top view
+        mid_index = pressure.shape[1] // sample_slice_top
+        top_pressure = np.squeeze(-0.5 * (pressure[:, -1, :] + pressure[:, -2, :]))
+        u_in_xz = self.U[:, mid_index, :]
+        w_in_xz = self.W[:, mid_index, :]
+        side_view = visualize_pressure_speed(top_pressure, pressure_min=p_min, pressure_max=p_max, \
+            speed_horizontal=u_in_xz, speed_vertical=w_in_xz, vis_img=vis_img, quiver_scale=0.06, vis_name='top',)
+
         # get side view
-        mid_index = pressure.shape[1] // 2
-        side_pressure = pressure[:, mid_index, :]
-        side_speed_x = self.W[:, mid_index, :]
-        side_speed_z = self.U[:, mid_index, :]
-        side_view = visualize_pressure_speed(side_pressure, speed_x=side_speed_x, speed_y=side_speed_z, quiver_scale=0.50, vis_img=True, )
+        sample_index = pressure.shape[0] // sample_slice_others
+        side_pressure = pressure[sample_index, :, :]
+        v_in_yz = self.V[sample_index, 1:, :]
+        w_in_yz = self.W[sample_index, 1:-1, :]
+        top_view = visualize_pressure_speed(side_pressure, pressure_min=p_min, pressure_max=p_max, \
+            speed_horizontal=v_in_yz, speed_vertical=w_in_yz, vis_img=vis_img, vis_name='side', \
+                quiver_scale=0.3, x_sample_interval=2, y_sample_interval=5)
+        if vis_img:
+            import pdb; pdb.set_trace()
         return top_view, front_view, side_view
     
     def rand_control(self, P):

@@ -29,7 +29,7 @@ close_wandb = True
 if not close_wandb:
     wandb.login()
 timestep = 100
-noise_scale = 0.0
+noise_scale = 0.5
 assert model_name in ['UNet', 'FNO2dObserverOld', 'FNO2dObserver'], "Model not supported!"
 use_spectral_conv = False
 
@@ -50,21 +50,20 @@ elif 'planes_channel180_minchan' in path_name:
     ntest = 2501
 else:
     raise RuntimeError("Type not supported!")
-policy_name = 'bc'
+policy_name = 'fno'
 # policy_name = 'rand'
-assert policy_name in ['rand', 'bc'], 'Not supported policy.'
+assert policy_name in ['rand', 'fno'], 'Not supported policy.'
 reward_type = 'mse'
 assert reward_type in ['mse', 'div'], "Not supported reward type."
 vis_frame = 60
 vis_interval = max(timestep // vis_frame, 1)
 output_dir = './outputs'
 
-
 '''
 Policy settings.
 '''
-rand_scale = 500  # match the random scale to bc
-if policy_name == 'bc':
+rand_scale = 10  # match the random scale to fno
+if policy_name == 'fno':
     print("Loading model.")
     model = torch.load(os.path.join(output_dir, load_model_name)).cuda()
     print("Model loaded!")

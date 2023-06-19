@@ -31,32 +31,31 @@ def norm(matrix):
     return matrix
 
 
-def visualize_pressure_speed(pressure, speed_x, speed_y, extend_p=0.2, quiver_sample=2, quiver_scale=0.35, vis_img=False):
-    pressure = norm(pressure)
-    speed_min = min(speed_x.min(), speed_y.min())
-    speed_max = max(speed_x.max(), speed_y.max())
-    speed_x = (speed_x - speed_min) / (speed_max - speed_min)
-    speed_y = (speed_y - speed_min) / (speed_max - speed_min)
-    DOMAIN_SIZE = 1.0
-    shape_y, shape_x = speed_x.shape[0], speed_x.shape[1]
+def visualize_pressure_speed(pressure, pressure_min, pressure_max, speed_horizontal, speed_vertical, \
+                             extend_p=0.2, quiver_interval=2, quiver_scale=0.35, vis_img=False, vis_name='top', \
+                                 x_sample_interval=2, y_sample_interval=2):
+    shape_y, shape_x = speed_horizontal.shape[0], speed_horizontal.shape[1]
     x = np.linspace(0.0, shape_y, shape_x)
     y = np.linspace(0.0, shape_x, shape_y)
     X, Y = np.meshgrid(x, y)
-
+    y_sample_index = list(range(1, shape_y, y_sample_interval))
+    x_sample_index = list(range(1, shape_x, x_sample_interval))
     plt.style.use("dark_background")
     fig_scale = (10, 6) if shape_x != shape_y else (7, 6)
     plt.figure(figsize=fig_scale)
-    plt.contourf(X, Y, pressure, cmap="coolwarm", vmin=pressure.min() - extend_p, vmax=pressure.max() + extend_p)
-    plt.colorbar()
+    v = np.linspace(pressure_min, pressure_max, 10, endpoint=True)
+    plt.contourf(X, Y, pressure, v, cmap="coolwarm")
+    colorbar = plt.colorbar(ticks=np.arange(pressure_min, pressure_max, (pressure_max - pressure_min) / 10))
+    plt.clim(pressure_min, pressure_max)
     widths = np.linspace(0, 10, X.size)
-    plt.quiver(X[::quiver_sample, ::quiver_sample], Y[::quiver_sample, ::quiver_sample] \
-        , speed_x[::quiver_sample, ::quiver_sample], speed_y[::quiver_sample, ::quiver_sample] \
-            , color="black", linewidths=widths, scale=quiver_scale, scale_units="x") 
-    # scale larger, quiver smaller
+    plt.quiver(X[y_sample_index, :][:, x_sample_index], Y[y_sample_index, :][:, x_sample_index] \
+        , speed_horizontal[y_sample_index, :][:, x_sample_index], speed_vertical[y_sample_index, :][:, x_sample_index] \
+            , color="black", linewidths=widths, scale=quiver_scale, scale_units="x") # scale larger, quiver smaller
     plt.tight_layout()
     plt.draw()
     image = np.array(plt.gcf().canvas.renderer._renderer)
     plt.close()
     if vis_img:
-        imageio.imwrite('debug.png', image)
+        imageio.imwrite(f'{vis_name}.png', image)
+    image = image[:, :, [2, 1, 0, 3]]  # switch channel
     return image

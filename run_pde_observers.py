@@ -38,14 +38,14 @@ np.random.seed(0)
 # DATA_FOLDER = './data/planes-001'
 DATA_FOLDER = './data/planes_channel180_minchan'
 project_name = 'fno_vs_unet'
-exp_name = '3-system-UNet-no-scheduler'
+exp_name = '3-system-FNO-no-scheduler'
 
 if 'minchan' in DATA_FOLDER:
     path_name = 'planes_channel180_minchan'
 else:
     path_name = 'planes'
     
-debug = True
+debug = False
 batch_size = 20
 learning_rate = 1e-3
 
@@ -96,7 +96,7 @@ n_steps_per_epoch = math.ceil(len(train_loader.dataset) / batch_size)
 ################################################################
 # create model
 ################################################################
-model_name = 'UNet'
+model_name = 'FNO2dObserver'
 assert model_name in ['UNet', 'FNO2dObserverOld', 'FNO2dObserver'], "Model not supported!"
 use_spectral_conv = False
 if model_name == 'FNO2dObserverOld':
@@ -172,7 +172,6 @@ for ep in tqdm(range(epochs)):
             wandb.log(metrics)
 
     # scheduler.step()
-
     model.eval()
     test_l2 = 0.0
     with torch.no_grad():
@@ -208,7 +207,7 @@ for ep in tqdm(range(epochs)):
             for index in [0, 5, 10, 19]:
                 vmin = dat['y'][index, :, :].min()
                 vmax = dat['y'][index, :, :].max()
-                fig, axes = plt.subplots(nrows=1, ncols=4)
+                fig, axes = plt.subplots(nrows=1, ncols=4, figsize=(18, 4))
                 plt.subplot(1, 3, 1)
                 im1 = plt.imshow(dat['x'][index, :, :, 0], cmap='jet', aspect='auto')
                 plt.title('Input')
@@ -235,7 +234,7 @@ for ep in tqdm(range(epochs)):
 for index in [0, 5, 10, 19]:
     vmin = dat['y'][index, :, :].min()
     vmax = dat['y'][index, :, :].max()
-    fig, axes = plt.subplots(nrows=1, ncols=4)
+    fig, axes = plt.subplots(nrows=1, ncols=4, figsize=(18, 4))
     plt.subplot(1, 3, 1)
     im1 = plt.imshow(dat['x'][index, :, :, 0], cmap='jet', aspect='auto')
     plt.title('Input')
