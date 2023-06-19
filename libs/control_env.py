@@ -163,31 +163,32 @@ class NSControl:
     def vis_state(self, vis_img=False, sample_slice_top=15, sample_slice_others=10):
         p_min, p_max = -0.05, 0.05
         pressure = self.compute_pressure()
+        cut_dim = self.U.shape[0]
         # get front view
         mid_index = pressure.shape[2] // sample_slice_others
-        front_pressure = pressure[:, :, mid_index].transpose()
-        u_in_xy = self.U[:, 1:-1, mid_index].transpose()
-        v_in_xy = self.V[:, 1:, mid_index].transpose()
+        front_pressure = pressure[:, :cut_dim, mid_index].transpose()
+        u_in_xy = self.U[:, :cut_dim, mid_index].transpose()
+        v_in_xy = self.V[:, :cut_dim, mid_index].transpose()
         front_view = visualize_pressure_speed(front_pressure, pressure_min=p_min, pressure_max=p_max, \
-            speed_horizontal=v_in_xy, speed_vertical=u_in_xy, vis_img=vis_img, vis_name='front', quiver_scale=0.3, \
-            x_sample_interval=2, y_sample_interval=5)
+            speed_horizontal=u_in_xy, speed_vertical=v_in_xy, vis_img=vis_img, vis_name='front', quiver_scale=0.3, \
+            x_sample_interval=2, y_sample_interval=2)
         
         # get top view
         mid_index = pressure.shape[1] // sample_slice_top
         top_pressure = np.squeeze(-0.5 * (pressure[:, -1, :] + pressure[:, -2, :]))
         u_in_xz = self.U[:, mid_index, :]
         w_in_xz = self.W[:, mid_index, :]
-        side_view = visualize_pressure_speed(top_pressure, pressure_min=p_min, pressure_max=p_max, \
+        top_view = visualize_pressure_speed(top_pressure, pressure_min=p_min, pressure_max=p_max, \
             speed_horizontal=u_in_xz, speed_vertical=w_in_xz, vis_img=vis_img, quiver_scale=0.06, vis_name='top',)
 
         # get side view
         sample_index = pressure.shape[0] // sample_slice_others
-        side_pressure = pressure[sample_index, :, :]
-        v_in_yz = self.V[sample_index, 1:, :]
-        w_in_yz = self.W[sample_index, 1:-1, :]
-        top_view = visualize_pressure_speed(side_pressure, pressure_min=p_min, pressure_max=p_max, \
-            speed_horizontal=v_in_yz, speed_vertical=w_in_yz, vis_img=vis_img, vis_name='side', \
-                quiver_scale=0.3, x_sample_interval=2, y_sample_interval=5)
+        side_pressure = pressure[sample_index, :cut_dim, :]
+        v_in_yz = self.V[sample_index, :cut_dim, :]
+        w_in_yz = self.W[sample_index, :cut_dim, :]
+        side_view = visualize_pressure_speed(side_pressure, pressure_min=p_min, pressure_max=p_max, \
+            speed_horizontal=w_in_yz, speed_vertical=v_in_yz, vis_img=vis_img, vis_name='side', \
+                quiver_scale=0.3, x_sample_interval=2, y_sample_interval=2)
         if vis_img:
             import pdb; pdb.set_trace()
         return top_view, front_view, side_view

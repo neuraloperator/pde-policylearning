@@ -25,11 +25,12 @@ model_name = 'UNet'
 use_v_plane = False
 modes = 12
 width = 32
-close_wandb = True
+vis_sample_img = False
+close_wandb = False
 if not close_wandb:
     wandb.login()
 timestep = 100
-noise_scale = 0.5
+noise_scale = 0.0
 assert model_name in ['UNet', 'FNO2dObserverOld', 'FNO2dObserver'], "Model not supported!"
 use_spectral_conv = False
 
@@ -148,7 +149,7 @@ for i in tqdm(range(timestep)):
     if not close_wandb:
         wandb.log(info)
     if i % vis_interval == 0:
-        top_view, front_view, side_view = control_env.vis_state()
+        top_view, front_view, side_view = control_env.vis_state(vis_img=vis_sample_img)
         top_view_v.append(top_view)
         front_view_v.append(front_view)
         side_view_v.append(side_view)

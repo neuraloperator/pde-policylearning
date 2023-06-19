@@ -34,6 +34,8 @@ def norm(matrix):
 def visualize_pressure_speed(pressure, pressure_min, pressure_max, speed_horizontal, speed_vertical, \
                              extend_p=0.2, quiver_interval=2, quiver_scale=0.35, vis_img=False, vis_name='top', \
                                  x_sample_interval=2, y_sample_interval=2):
+    pressure[pressure > pressure_max] = pressure_max
+    pressure[pressure < pressure_min] = pressure_min
     shape_y, shape_x = speed_horizontal.shape[0], speed_horizontal.shape[1]
     x = np.linspace(0.0, shape_y, shape_x)
     y = np.linspace(0.0, shape_x, shape_y)
@@ -56,6 +58,6 @@ def visualize_pressure_speed(pressure, pressure_min, pressure_max, speed_horizon
     image = np.array(plt.gcf().canvas.renderer._renderer)
     plt.close()
     if vis_img:
-        imageio.imwrite(f'{vis_name}.png', image)
+        imageio.imwrite(f'outputs/{vis_name}.png', image)
     image = image[:, :, [2, 1, 0, 3]]  # switch channel
     return image
