@@ -13,7 +13,7 @@ import imageio
 
 
 project_name = 'control_v1'
-load_model_name = 'planes_channel180_minchan_2-system-UNet-ori-loss.pth'
+load_model_name = 'planes_channel180_minchan_3-system-FNO-no-scheduler.pth'
 display_variables = ['policy_name', 'reward_type', 'noise_scale', 'timestep']
 DATA_FOLDER = './data/planes_channel180_minchan'
 if 'minchan' in DATA_FOLDER:
@@ -21,7 +21,7 @@ if 'minchan' in DATA_FOLDER:
 else:
     path_name = 'planes'
 
-model_name = 'UNet'
+model_name = 'FNO2dObserver'
 use_v_plane = False
 modes = 12
 width = 32
@@ -29,7 +29,7 @@ vis_sample_img = False
 close_wandb = False
 if not close_wandb:
     wandb.login()
-timestep = 100
+timestep = 1000
 noise_scale = 0.0
 assert model_name in ['UNet', 'FNO2dObserverOld', 'FNO2dObserver'], "Model not supported!"
 use_spectral_conv = False

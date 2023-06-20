@@ -11,7 +11,24 @@ def to_m(numpy_a):
         return matlab.int64(numpy_a)
     else:
         return matlab.double(numpy_a.tolist())
+
+
+def relative_loss(A, B):
+    """
+    Compute the relative loss between matrices A and B.
+    """
+    numerator = np.linalg.norm(A - B)  # Numerator: norm of the difference between A and B
+    denominator = np.linalg.norm(A)  # Denominator: norm of matrix A
     
+    # Handle division by zero case
+    if denominator == 0:
+        return 0.0
+    
+    # Compute relative loss
+    loss = numerator / denominator
+    
+    return loss
+
 
 class NSControl:
     def __init__(self, timestep, noise_scale):
@@ -132,18 +149,18 @@ class NSControl:
 
     def reward_gt(self, bound=-1):
         reward = 0
-        reward -= mean_squared_error(self.U_gt.flatten(), self.U.flatten())
-        reward -= mean_squared_error(self.V_gt.flatten(), self.V.flatten())
-        reward -= mean_squared_error(self.W_gt.flatten(), self.W.flatten())
+        reward -= relative_loss(self.U_gt.flatten(), self.U.flatten())
+        reward -= relative_loss(self.V_gt.flatten(), self.V.flatten())
+        reward -= relative_loss(self.W_gt.flatten(), self.W.flatten())
         if reward < bound:
             reward = bound
         return reward
 
     def reward_td(self, prev_U, prev_V, prev_W, bound=-1):
         reward = 0
-        reward -= mean_squared_error(prev_U.flatten(), self.U.flatten())
-        reward -= mean_squared_error(prev_V.flatten(), self.V.flatten())
-        reward -= mean_squared_error(prev_W.flatten(), self.W.flatten())
+        reward -= relative_loss(prev_U.flatten(), self.U.flatten())
+        reward -= relative_loss(prev_V.flatten(), self.V.flatten())
+        reward -= relative_loss(prev_W.flatten(), self.W.flatten())
         if reward < bound:
             reward = bound
         return reward
@@ -211,5 +228,5 @@ class NSControl:
         gt_diff = self.reward_gt()
         speed_diff = self.reward_td(prev_U, prev_V, prev_W)
         done = False                                                                                # Termination flag indicating if the episode is done
-        info = {'-|divergence|': div, '-|now - unnoised|': gt_diff, '-|now - prev|': speed_diff}    # Additional information
+        info = {'-|divergence|': div, '-|now - unnoised| / ｜now|': gt_diff, '-|now - prev| / |now|': speed_diff}    # Additional information
         return next_state, div, done, info
