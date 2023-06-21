@@ -6,9 +6,6 @@ This file is the Fourier Neural Operator for the 2D Navier—Stokes problem disc
 # Connecting to WandB 
 ################################################################
 import wandb
-wandb.login()
-# WANDB_API_KEY = '78544c6ed5f52873b1588acd09ead571942d7dfd'
-
 ################################################################
 # Imports
 ################################################################
@@ -25,6 +22,7 @@ from timeit import default_timer
 from libs.utilities3 import *
 from libs.unet_models import *
 from libs.fno_models import *
+from libs.rno_models import *
 from libs.pde_data_loader import *
 from tqdm import tqdm
 from torch.optim import Adam
@@ -38,23 +36,30 @@ np.random.seed(0)
 # DATA_FOLDER = './data/planes-001'
 DATA_FOLDER = './data/planes_channel180_minchan'
 project_name = 'fno_vs_unet'
-exp_name = '3-system-FNO-no-scheduler'
-
+exp_name = '3-system-RNO-no-scheduler'
 if 'minchan' in DATA_FOLDER:
     path_name = 'planes_channel180_minchan'
 else:
     path_name = 'planes'
-    
-debug = False
+
+model_name = 'RNO2dObserverOld'
+assert model_name in ['UNet', 'RNO2dObserverOld', 'FNO2dObserverOld', 'FNO2dObserver'],  "Model not supported!"
+
+close_wandb = False
+if not close_wandb:
+    wandb.login()
 batch_size = 20
 learning_rate = 1e-3
-
 epochs = 500
 step_size = 100
 gamma = 0.5
-
 modes = 12
 width = 32
+if 'RNO' not in model_name:
+    train_shuffle = True
+else:
+    train_shuffle = False
+
 
 if path_name == 'planes':
     downsample_rate = 1  # 8 previously
@@ -76,9 +81,13 @@ use_patch = False
 ################################################################
 # load data and data normalization
 ################################################################
-idx = torch.randperm(ntrain + ntest)
+if train_shuffle:
+    idx = torch.randperm(ntrain + ntest)
+else:
+    idx = torch.arange(ntrain + ntest)
 training_idx = idx[:ntrain]
 testing_idx = idx[-ntest:]
+
 train_dataset = PDEDataset(DATA_FOLDER, training_idx, downsample_rate, x_range, y_range, use_patch=use_patch)
 test_dataset = PDEDataset(DATA_FOLDER, testing_idx, downsample_rate, x_range, y_range, use_patch=use_patch)
 
@@ -89,27 +98,28 @@ test_dataset = PDEDataset(DATA_FOLDER, testing_idx, downsample_rate, x_range, y_
 # v_plane_decoded = train_dataset.v_norm.cuda_decode(v_plane)
 # np.savetxt('outputs/v_plane_decoded.txt', v_plane_decoded.cpu().numpy())
 
-train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=batch_size, shuffle=not debug, drop_last=True)
+train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=batch_size, shuffle=train_shuffle, drop_last=True)
 test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=batch_size, shuffle=False, drop_last=True)
 n_steps_per_epoch = math.ceil(len(train_loader.dataset) / batch_size)
 
 ################################################################
 # create model
 ################################################################
-model_name = 'FNO2dObserver'
-assert model_name in ['UNet', 'FNO2dObserverOld', 'FNO2dObserver'], "Model not supported!"
-use_spectral_conv = False
 if model_name == 'FNO2dObserverOld':
     model = FNO2dObserverOld(modes, modes, width, use_v_plane=use_v_plane).cuda()
 elif model_name == 'FNO2dObserver':
     model = FNO2dObserver(modes, modes, width, use_v_plane=use_v_plane).cuda()
-else:
+elif model_name == 'RNO2dObserverOld':
+    model = RNO2dObserverOld(modes, modes, width).cuda()
+elif model_name == 'UNet':
+    use_spectral_conv = False
     model = UNet(use_spectral_conv=use_spectral_conv).cuda()
+else:
+    raise NotImplementedError("Model not supported!")
 
 ################################################################
 # training and evaluation
 ################################################################
-print("param number:", count_params(model))
 weight_decay = 1e-4
 optimizer = Adam(model.parameters(), lr=learning_rate, weight_decay=weight_decay)
 # scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=step_size, gamma=gamma)
@@ -119,7 +129,7 @@ output_path += '_observer.mat'
 myloss = LpLoss(size_average=False)
 # myloss = nn.MSELoss()
 
-if not debug:
+if not close_wandb:
     wandb.init(
         project=project_name + "_" + path_name,
         name=exp_name,
@@ -130,7 +140,6 @@ if not debug:
             "has_prev_press": True,
             "patches": False,
             "permute": True,
-            "use_spectral_conv": use_spectral_conv,
             "DATA_FOLDER": DATA_FOLDER,
             "ntrain": ntrain,
             "ntest": ntest,
@@ -151,7 +160,7 @@ for ep in tqdm(range(epochs)):
     model.train()
     t1 = default_timer()
     train_l2 = 0
-    for step, (p_plane, v_plane) in enumerate(train_loader):
+    for step, (p_plane, v_plane) in enumerate(tqdm(train_loader)):
         p_plane, v_plane = p_plane.cuda(), v_plane.cuda()
         p_plane = p_plane.reshape(-1, x_range, y_range, 1)
         v_plane = v_plane.reshape(-1, x_range, y_range, 1)
@@ -167,7 +176,7 @@ for ep in tqdm(range(epochs)):
         train_l2 += loss.item()
         metrics = {"train/train_loss": loss.item(), 
                    "train/epoch": (step + 1 + (n_steps_per_epoch * ep)) / n_steps_per_epoch}
-        if step + 1 < n_steps_per_epoch and not debug:
+        if step + 1 < n_steps_per_epoch and not close_wandb:
             # Log train metrics to wandb 
             wandb.log(metrics)
 
@@ -188,7 +197,7 @@ for ep in tqdm(range(epochs)):
             # test_loss = myloss(out_decoded.view(batch_size, -1), v_plane_decoded.view(batch_size, -1)).item()
             test_l2 += test_loss
             test_metrics = {"test/test_loss": test_loss}
-            if not debug:
+            if not close_wandb:
                 wandb.log(test_metrics)
 
     train_l2/= ntrain
@@ -203,7 +212,7 @@ for ep in tqdm(range(epochs)):
         dat = {'x': p_plane_decoded.cpu().numpy(), 'pred': out_decoded.cpu().numpy(), 'y': v_plane_decoded.cpu().numpy(),}
         # scipy.io.savemat(output_path, mdict=dat)
         # Plots
-        if not debug:
+        if not close_wandb:
             for index in [0, 5, 10, 19]:
                 vmin = dat['y'][index, :, :].min()
                 vmax = dat['y'][index, :, :].max()
@@ -223,7 +232,7 @@ for ep in tqdm(range(epochs)):
             torch.save(model, f"./outputs/{path_name}_{exp_name}.pth")
     print(f"epoch: {ep}, time passed: {t2-t1}, train loss: {train_l2}, test loss: {test_l2}, best loss: {best_loss}.")
 
-    if not debug:
+    if not close_wandb:
         wandb.log(avg_metrics)
 ################################################################
 # making the plots
@@ -246,7 +255,7 @@ for index in [0, 5, 10, 19]:
     plt.title('Prediction')
     cbar_ax = fig.add_axes([.92, 0.15, 0.04, 0.7])
     fig.colorbar(im3, cax=cbar_ax)
-    if not debug:
+    if not close_wandb:
         wandb.log({f"chart_{index}": plt})
-if not debug:
+if not close_wandb:
     wandb.finish()

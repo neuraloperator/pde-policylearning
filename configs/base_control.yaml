@@ -1,0 +1,33 @@
+project_name: control_v1
+load_model_name: planes_channel180_minchan_3-system-FNO-no-scheduler.pth
+display_variables:
+  - policy_name
+  - reward_type
+  - noise_scale
+  - timestep
+DATA_FOLDER: ./data/planes_channel180_minchan
+path_name: planes_channel180_minchan
+model_name: FNO2dObserver
+use_v_plane: false
+modes: 12
+width: 32
+vis_sample_img: false
+close_wandb: false
+timestep: 1000
+noise_scale: 0.1
+use_spectral_conv: false
+
+downsample_rate: 1
+x_range: 32
+y_range: 32
+ntrain: 7500
+ntest: 2501
+policy_name: fno
+# policy_name: rand
+reward_type: mse
+
+# visualization setttings
+vis_frame: 60
+vis_interval: 1000  # default, will be overwritten.
+output_dir: ./outputs
+rand_scale: 10

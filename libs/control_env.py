@@ -141,13 +141,13 @@ class NSControl:
             div[:, j, :] = ux + uy + uz
         return div
 
-    def reward_div(self, bound=-10):
+    def reward_div(self, bound=-100):
         reward = - abs(np.sum(self.compute_div()))
         if reward < bound:
             reward = bound
         return reward
 
-    def reward_gt(self, bound=-1):
+    def reward_gt(self, bound=-100):
         reward = 0
         reward -= relative_loss(self.U_gt.flatten(), self.U.flatten())
         reward -= relative_loss(self.V_gt.flatten(), self.V.flatten())
@@ -156,7 +156,7 @@ class NSControl:
             reward = bound
         return reward
 
-    def reward_td(self, prev_U, prev_V, prev_W, bound=-1):
+    def reward_td(self, prev_U, prev_V, prev_W, bound=-100):
         reward = 0
         reward -= relative_loss(prev_U.flatten(), self.U.flatten())
         reward -= relative_loss(prev_V.flatten(), self.V.flatten())
