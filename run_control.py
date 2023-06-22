@@ -17,7 +17,6 @@ def main(args):
     '''
     Policy settings.
     '''
-    # rand_scale = 10  # match the random scale to fno
     if args.policy_name == 'fno':
         print("Loading model.")
         model = torch.load(os.path.join(args.output_dir, args.load_model_name)).cuda()
@@ -116,7 +115,7 @@ def main(args):
 if __name__ == '__main__':
     # Setup args
     args = parse_arguments()
-    loaded_args = load_arguments_from_yaml(args.yaml_path)
+    loaded_args = load_arguments_from_yaml(args.control_yaml)
     args = merge_args_with_yaml(args, loaded_args)
     assert args.model_name in ['UNet', 'FNO2dObserverOld', 'FNO2dObserver'], "Model not supported!"
     args.vis_interval = max(args.timestep // args.vis_frame, 1)

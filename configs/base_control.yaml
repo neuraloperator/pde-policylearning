@@ -14,7 +14,7 @@ width: 32
 vis_sample_img: false
 close_wandb: false
 timestep: 1000
-noise_scale: 0.1
+noise_scale: 0.0
 use_spectral_conv: false
 
 downsample_rate: 1
@@ -22,8 +22,8 @@ x_range: 32
 y_range: 32
 ntrain: 7500
 ntest: 2501
-policy_name: fno
-# policy_name: rand
+# policy_name: fno
+policy_name: rand
 reward_type: mse
 
 # visualization setttings

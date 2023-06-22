@@ -1,6 +1,6 @@
 # pde-observers
 
-1. First run:
+1. First run the following to preprocess data (for efficient running and debugging):
 
 ```
 python lib/mat2npy.py
@@ -11,6 +11,8 @@ python lib/mat2npy.py
 
 ```
 python run_pde_observers.py
+# rno
+python run_pde_observers.py --
 ```
 
 
