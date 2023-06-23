@@ -27,7 +27,7 @@ import scipy.io
 import sys
 sys.path.append('ks')
 
-from libs.fno_models import SpectralConv2d
+from libs.models.fno_models import SpectralConv2d
 from libs.utilities3 import *
 
 torch.manual_seed(0)
@@ -119,7 +119,7 @@ class RNO_layer(nn.Module):
 
 
 class RNO2dObserverOld(nn.Module):
-    def __init__(self, modes1, modes2, width, pad_amount=None, pad_dim='1'):
+    def __init__(self, modes1, modes2, width, recurrent_index, pad_amount=None, pad_dim='1'):
         """
             `pad_dim` can be '1', '2', or 'both', and this decides which of the two space dimensions to pad
             `pad_amount` is a tuple that determines how much to pad each dimension by, if `pad_dim`
@@ -132,6 +132,7 @@ class RNO2dObserverOld(nn.Module):
         self.width = width
         self.pad_amount = pad_amount # pads dom_size1 dimension
         self.pad_dim = pad_dim
+        self.recurrent_index = recurrent_index
         self.in_dim = 3
         self.out_dim = 1
 
@@ -186,10 +187,9 @@ class RNO2dObserverOld(nn.Module):
         return pred, final_hidden_states
 
     def forward(self, x, v_plane=None, timestep=2, init_hidden_states=[None, None, None]):
-        total_bs, xshape, yshape, dim = x.shape
-        x = x.reshape(total_bs//timestep, timestep, xshape, yshape, dim)
+        bs, timestep, xshape, yshape, dim = x.shape
         result = self.predict(x, num_steps=timestep)
-        result = result.reshape(total_bs, xshape, yshape, -1)
+        result = result[:, self.recurrent_index, :, :, :]
         return result
 
     def predict(self, x, num_steps): # num_steps is the number of steps ahead to predict

@@ -3,7 +3,7 @@ import numpy as np
 from libs.utilities3 import *
 from libs.control_env import *
 from libs.unet_models import *
-from libs.fno_models import *
+from libs.models.fno_models import *
 from libs.pde_data_loader import *
 from libs.visualization import *
 from libs.arguments import *

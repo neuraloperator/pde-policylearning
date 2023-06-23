@@ -13,8 +13,9 @@ import matplotlib.pyplot as plt
 from timeit import default_timer
 from libs.utilities3 import *
 from libs.unet_models import *
-from libs.fno_models import *
-from libs.rno_models import *
+from libs.models.fno_models import *
+from libs.models.rno_models import *
+from libs.models.transformer_models import *
 from libs.pde_data_loader import *
 from libs.arguments import *
 from libs.metrics import *
@@ -25,8 +26,9 @@ torch.manual_seed(0)
 np.random.seed(0)
 
 def main(args):
-    assert args.model_name in ['UNet', 'RNO2dObserverOld', 'FNO2dObserverOld', 'FNO2dObserver'],  "Model not supported!"
-    if 'RNO' not in args.model_name:
+    args.using_transformer = 'Transformer' in args.model_name
+    assert args.model_name in ['UNet', 'RNO2dObserverOld', 'FNO2dObserverOld', 'FNO2dObserver', 'Transformer2D'],  "Model not supported!"
+    if (not args.recurrent_model) and (not args.using_transformer):
         train_shuffle = True
     else:
         train_shuffle = False
@@ -61,18 +63,19 @@ def main(args):
     elif args.model_name == 'FNO2dObserver':
         model = FNO2dObserver(args.modes, args.modes, args.width, use_v_plane=args.use_v_plane).cuda()
     elif args.model_name == 'RNO2dObserverOld':
-        model = RNO2dObserverOld(args.modes, args.modes, args.width).cuda()
+        model = RNO2dObserverOld(args.modes, args.modes, args.width, recurrent_index=args.recurrent_index).cuda()
     elif args.model_name == 'UNet':
         use_spectral_conv = False
         model = UNet(use_spectral_conv=args.use_spectral_conv).cuda()
+    elif args.model_name == 'Transformer2D':
+        model = SimpleTransformer(**args.model).cuda()
     else:
         raise NotImplementedError("Model not supported!")
 
     ################################################################
     # training and evaluation
     ################################################################
-    weight_decay = 1e-4
-    optimizer = Adam(model.parameters(), lr=args.learning_rate, weight_decay=weight_decay)
+    optimizer = Adam(model.parameters(), lr=args.learning_rate, weight_decay=args.weight_decay)
     output_path = './outputs/'
     output_path += args.path_name
     output_path += '_observer.mat'
@@ -108,13 +111,22 @@ def main(args):
     for ep in tqdm(range(args.epochs)):
         model.train()
         t1 = default_timer()
-        train_l2 = 0
+        train_l2, train_num = 0, 0
         for step, (p_plane, v_plane) in enumerate(tqdm(train_loader)):
             p_plane, v_plane = p_plane.cuda(), v_plane.cuda()
             p_plane = p_plane.reshape(-1, args.x_range, args.y_range, 1)
             v_plane = v_plane.reshape(-1, args.x_range, args.y_range, 1)
+            if args.recurrent_model:
+                p_plane = p_plane.reshape(-1, args.timestep, args.x_range, args.y_range, 1)
+                v_plane = v_plane.reshape(-1, args.timestep, args.x_range, args.y_range, 1)
+                v_plane = v_plane[:, args.recurrent_index, :, :, :]
+                args.batch_size = v_plane.shape[0]
+            elif args.using_transformer:
+                p_plane = p_plane.reshape(-1, args.timestep, args.x_range, args.y_range, 1)
+            train_num += len(v_plane)
             optimizer.zero_grad()
-            out = model(p_plane, v_plane).reshape(-1, args.x_range, args.y_range)
+            out = model(p_plane, v_plane)
+            out = out.reshape(-1, args.x_range, args.y_range)
             out_decoded = train_dataset.v_norm.cuda_decode(out)
             v_plane = v_plane.squeeze()
             v_plane_decoded = train_dataset.v_norm.cuda_decode(v_plane)
@@ -130,13 +142,24 @@ def main(args):
                 wandb.log(metrics)
 
         model.eval()
-        test_l2 = 0.0
+        test_l2, test_num = 0.0, 0
         with torch.no_grad():
             for p_plane, v_plane in test_loader:
                 p_plane, v_plane = p_plane.cuda(), v_plane.cuda()
                 p_plane = p_plane.reshape(-1, args.x_range, args.y_range, 1)
                 v_plane = v_plane.reshape(-1, args.x_range, args.y_range, 1)
-                out = model(p_plane, v_plane).reshape(-1, args.x_range, args.y_range)
+                if args.recurrent_model:
+                    p_plane = p_plane.reshape(-1, args.timestep, args.x_range, args.y_range, 1)
+                    v_plane = v_plane.reshape(-1, args.timestep, args.x_range, args.y_range, 1)
+                    v_plane = v_plane[:, args.recurrent_index, :, :, :]
+                    args.batch_size = v_plane.shape[0]
+                elif args.using_transformer:
+                    p_plane = p_plane.reshape(-1, args.timestep, args.x_range, args.y_range, 1)
+                test_num += len(v_plane)
+                out = model(p_plane, v_plane)
+                out = out.reshape(-1, args.x_range, args.y_range)
+                if args.using_transformer:
+                    p_plane = p_plane.reshape(-1, args.x_range, args.y_range, 1)
                 out_decoded = train_dataset.v_norm.cuda_decode(out)
                 v_plane = v_plane.squeeze()
                 p_plane_decoded = train_dataset.p_norm.cuda_decode(p_plane)
@@ -144,12 +167,12 @@ def main(args):
                 # test_loss = myloss(out.view(args.batch_size, -1), v_plane.view(args.batch_size, -1)).item()
                 test_loss = myloss(out_decoded.view(args.batch_size, -1), v_plane_decoded.view(args.batch_size, -1)).item()
                 test_l2 += test_loss
-                test_metrics = {"test/test_loss": test_loss}
+                test_metrics = {"test/test_loss": test_loss / args.batch_size}
                 if not args.close_wandb:
                     wandb.log(test_metrics)
 
-        train_l2/= args.ntrain
-        test_l2 /= args.ntest
+        train_l2/= train_num
+        test_l2 /= test_num
         avg_metrics = {"train/avg_train_loss": train_l2,
                     "test/avg_test_loss": test_l2,}
         t2 = default_timer()
@@ -158,7 +181,8 @@ def main(args):
             avg_metrics['test/best_loss'] = best_loss
             dat = {'x': p_plane_decoded.cpu().numpy(), 'pred': out_decoded.cpu().numpy(), 'y': v_plane_decoded.cpu().numpy(),}
             if not args.close_wandb:
-                for index in [0, 5, 10, 19]:
+                data_num = dat['y'].shape[0]
+                for index in range(0, data_num - 1, 5):
                     vmin = dat['y'][index, :, :].min()
                     vmax = dat['y'][index, :, :].max()
                     fig, axes = plt.subplots(nrows=1, ncols=4, figsize=(18, 4))

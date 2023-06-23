@@ -12,7 +12,8 @@ python lib/mat2npy.py
 ```
 python run_pde_observers.py
 # rno
-python run_pde_observers.py --
+python run_pde_observers.py --train_yaml configs/base_rno.yaml
+python run_pde_observers.py --train_yaml configs/base_transformer.yaml
 ```
 
 

@@ -39,10 +39,10 @@ class PDEDataset(Dataset):
             v_mean = self.v_plane_mean[::self.downsample_rate, ::self.downsample_rate][:self.x_range, :self.y_range]
             v_std = self.v_plane_std[::self.downsample_rate, ::self.downsample_rate][:self.x_range, :self.y_range]
         
-        # self.p_norm = NormalizerGivenMeanStd(p_mean, p_std)
-        # self.v_norm = NormalizerGivenMeanStd(v_mean, v_std)
-        self.p_norm = RangeNormalizerGivenMinMax(self.p_plane_min, self.p_plane_max)
-        self.v_norm = RangeNormalizerGivenMinMax(self.v_plane_min, self.v_plane_max)
+        self.p_norm = NormalizerGivenMeanStd(p_mean, p_std)
+        self.v_norm = NormalizerGivenMeanStd(v_mean, v_std)
+        # self.p_norm = RangeNormalizerGivenMinMax(self.p_plane_min, self.p_plane_max)
+        # self.v_norm = RangeNormalizerGivenMinMax(self.v_plane_min, self.v_plane_max)
         
     def __len__(self):
         return self.data_length

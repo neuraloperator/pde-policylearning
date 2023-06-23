@@ -1,16 +1,11 @@
 import math
-
 import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.nn.parameter import Parameter
-
 import matplotlib.pyplot as plt
-
 import operator
-from functools import reduce
-from functools import partial
 from neuralop.models import FNO2d
 from timeit import default_timer
 
