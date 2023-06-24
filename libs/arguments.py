@@ -30,7 +30,7 @@ def parse_arguments():
     parser = argparse.ArgumentParser(description='Argument Controller')
     parser.add_argument('--control_yaml', type=str, default='configs/base_control.yaml',
                         help='yaml path to load configs')
-    parser.add_argument('--train_yaml', type=str, default='configs/base_fno.yaml',
+    parser.add_argument('--train_yaml', type=str, default='configs/base_rno.yaml',
                         help='yaml path to load configs')
     args = parser.parse_args()
     return args

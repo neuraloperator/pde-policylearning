@@ -21,3 +21,4 @@ use_v_plane: false
 use_patch: false
 timestep: -1
 recurrent_model: false
+random_split: true

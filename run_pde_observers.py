@@ -22,34 +22,35 @@ from libs.metrics import *
 from tqdm import tqdm
 from torch.optim import Adam
 
+
 torch.manual_seed(0)
 np.random.seed(0)
 
-def main(args):
+
+def main(args, sample_data=False, train_shuffle=True):
     args.using_transformer = 'Transformer' in args.model_name
     assert args.model_name in ['UNet', 'RNO2dObserverOld', 'FNO2dObserverOld', 'FNO2dObserver', 'Transformer2D'],  "Model not supported!"
-    if (not args.recurrent_model) and (not args.using_transformer):
-        train_shuffle = True
-    else:
-        train_shuffle = False
     if not args.close_wandb:
         wandb.login()
-    if train_shuffle:
+    if args.random_split:
         idx = torch.randperm(args.ntrain + args.ntest)
     else:
         idx = torch.arange(args.ntrain + args.ntest)
     training_idx = idx[:args.ntrain]
     testing_idx = idx[-args.ntest:]
+    if args.recurrent_model:
+        dataset_fn = SequentialPDEDataset
+    else:
+        dataset_fn = PDEDataset
+    train_dataset = dataset_fn(args, args.DATA_FOLDER, training_idx, args.downsample_rate, args.x_range, args.y_range, use_patch=args.use_patch)
+    test_dataset = dataset_fn(args, args.DATA_FOLDER, testing_idx, args.downsample_rate, args.x_range, args.y_range, use_patch=args.use_patch)
 
-    train_dataset = PDEDataset(args.DATA_FOLDER, training_idx, args.downsample_rate, args.x_range, args.y_range, use_patch=args.use_patch)
-    test_dataset = PDEDataset(args.DATA_FOLDER, testing_idx, args.downsample_rate, args.x_range, args.y_range, use_patch=args.use_patch)
-
-    # # sample and visualize data here
-    # p_plane, v_plane = train_dataset[0]
-    # p_plane, v_plane = p_plane.cuda(), v_plane.cuda()
-    # v_plane = v_plane.squeeze()
-    # v_plane_decoded = train_dataset.v_norm.cuda_decode(v_plane)
-    # np.savetxt('outputs/v_plane_decoded.txt', v_plane_decoded.cpu().numpy())
+    if sample_data:
+        p_plane, v_plane = train_dataset[0]
+        p_plane, v_plane = p_plane.cuda(), v_plane.cuda()
+        v_plane = v_plane.squeeze()
+        v_plane_decoded = train_dataset.v_norm.cuda_decode(v_plane)
+        np.savetxt('outputs/v_plane_decoded.txt', v_plane_decoded.cpu().numpy())
 
     train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=args.batch_size, shuffle=train_shuffle, drop_last=True)
     test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=args.batch_size, shuffle=False, drop_last=True)
@@ -63,7 +64,7 @@ def main(args):
     elif args.model_name == 'FNO2dObserver':
         model = FNO2dObserver(args.modes, args.modes, args.width, use_v_plane=args.use_v_plane).cuda()
     elif args.model_name == 'RNO2dObserverOld':
-        model = RNO2dObserverOld(args.modes, args.modes, args.width, recurrent_index=args.recurrent_index).cuda()
+        model = RNO2dObserverOld(args.modes, args.modes, args.width, recurrent_index=args.recurrent_index, layer_num=args.layer_num).cuda()
     elif args.model_name == 'UNet':
         use_spectral_conv = False
         model = UNet(use_spectral_conv=args.use_spectral_conv).cuda()
@@ -114,15 +115,16 @@ def main(args):
         train_l2, train_num = 0, 0
         for step, (p_plane, v_plane) in enumerate(tqdm(train_loader)):
             p_plane, v_plane = p_plane.cuda(), v_plane.cuda()
-            p_plane = p_plane.reshape(-1, args.x_range, args.y_range, 1)
-            v_plane = v_plane.reshape(-1, args.x_range, args.y_range, 1)
             if args.recurrent_model:
                 p_plane = p_plane.reshape(-1, args.timestep, args.x_range, args.y_range, 1)
                 v_plane = v_plane.reshape(-1, args.timestep, args.x_range, args.y_range, 1)
-                v_plane = v_plane[:, args.recurrent_index, :, :, :]
+                v_plane = v_plane[:, args.recurrent_index, :, :, :]  # select the predict element
                 args.batch_size = v_plane.shape[0]
             elif args.using_transformer:
                 p_plane = p_plane.reshape(-1, args.timestep, args.x_range, args.y_range, 1)
+            else:
+                p_plane = p_plane.reshape(-1, args.x_range, args.y_range, 1)
+                v_plane = v_plane.reshape(-1, args.x_range, args.y_range, 1)
             train_num += len(v_plane)
             optimizer.zero_grad()
             out = model(p_plane, v_plane)
@@ -146,8 +148,6 @@ def main(args):
         with torch.no_grad():
             for p_plane, v_plane in test_loader:
                 p_plane, v_plane = p_plane.cuda(), v_plane.cuda()
-                p_plane = p_plane.reshape(-1, args.x_range, args.y_range, 1)
-                v_plane = v_plane.reshape(-1, args.x_range, args.y_range, 1)
                 if args.recurrent_model:
                     p_plane = p_plane.reshape(-1, args.timestep, args.x_range, args.y_range, 1)
                     v_plane = v_plane.reshape(-1, args.timestep, args.x_range, args.y_range, 1)
@@ -155,6 +155,9 @@ def main(args):
                     args.batch_size = v_plane.shape[0]
                 elif args.using_transformer:
                     p_plane = p_plane.reshape(-1, args.timestep, args.x_range, args.y_range, 1)
+                else:
+                    p_plane = p_plane.reshape(-1, args.x_range, args.y_range, 1)
+                    v_plane = v_plane.reshape(-1, args.x_range, args.y_range, 1)
                 test_num += len(v_plane)
                 out = model(p_plane, v_plane)
                 out = out.reshape(-1, args.x_range, args.y_range)
@@ -175,12 +178,9 @@ def main(args):
 
         train_l2/= train_num
         test_l2 /= test_num
-        avg_metrics = {"train/avg_train_loss": train_l2,
-                    "test/avg_test_loss": test_l2,}
         t2 = default_timer()
         if test_l2 < best_loss:
             best_loss = test_l2
-            avg_metrics['test/best_loss'] = best_loss
             dat = {'x': p_plane_decoded.cpu().numpy(), 'pred': out_decoded.cpu().numpy(), 'y': v_plane_decoded.cpu().numpy(),}
             if not args.close_wandb:
                 data_num = dat['y'].shape[0]
@@ -203,6 +203,10 @@ def main(args):
                 torch.save(model, f"./outputs/{args.path_name}_{args.exp_name}.pth")
         print(f"epoch: {ep}, time passed: {t2-t1}, train loss: {train_l2}, test loss: {test_l2}, best loss: {best_loss}.")
 
+        avg_metrics = {"train/avg_train_loss": train_l2,
+                    "test/avg_test_loss": test_l2,
+                    "test/best_loss": best_loss}
+        
         if not args.close_wandb:
             wandb.log(avg_metrics)
             

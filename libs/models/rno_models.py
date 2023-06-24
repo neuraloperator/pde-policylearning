@@ -120,7 +120,7 @@ class RNO_layer(nn.Module):
 
 
 class RNO2dObserverOld(nn.Module):
-    def __init__(self, modes1, modes2, width, recurrent_index, pad_amount=None, pad_dim='1'):
+    def __init__(self, modes1, modes2, width, recurrent_index, layer_num=3, pad_amount=None, pad_dim='1'):
         """
             `pad_dim` can be '1', '2', or 'both', and this decides which of the two space dimensions to pad
             `pad_amount` is a tuple that determines how much to pad each dimension by, if `pad_dim`
@@ -136,24 +136,23 @@ class RNO2dObserverOld(nn.Module):
         self.recurrent_index = recurrent_index
         self.in_dim = 3
         self.out_dim = 1
-
+        self.layer_num = layer_num
         self.p = nn.Linear(self.in_dim, self.width) # input channel_dim is in_dim + 1: u is in-dim, and grid is 2 dim
-
-        self.layer1 = RNO_layer(self.width, self.width, modes1, modes2, width, return_sequences=True)
-        self.layer2 = RNO_layer(self.width, self.width, modes1, modes2, width, return_sequences=True)
-        self.layer3 = RNO_layer(self.width, self.width, modes1, modes2, width, return_sequences=False)
-
+        module_list = [RNO_layer(self.width, self.width, modes1, modes2, width, return_sequences=True)
+                                     for _ in range(layer_num - 1)]
+        module_list.append(RNO_layer(self.width, self.width, modes1, modes2, width, return_sequences=False))
+        self.layers = nn.ModuleList(module_list)
         self.q = nn.Linear(self.width, self.out_dim)
         self.pos = PositionalEncoding(d_model=1, dropout=0.0)
     
-    def forward_one_step(self, x, v_plane=None, init_hidden_states=[None, None, None]): # h must be padded if using padding
+    def forward_one_step(self, x, v_plane=None, init_hidden_states=None): # h must be padded if using padding
         batch_size, timesteps, dom_size1, dom_size2, dim = x.shape
-        h1, h2, h3 = init_hidden_states
+        if init_hidden_states is None:
+            init_hidden_states = [None] * self.layer_num
         x = self.pos(x.reshape(batch_size, timesteps, -1)).reshape(x.shape)
         grid = self.get_grid(x.shape, x.device)
         x = torch.cat((x, grid), dim=-1)
         x = self.p(x)
-
         x = x.permute(0, 1, 4, 2, 3) # new shape: (batch, timesteps, dim, dom_size1, dom_size2)
         if self.pad_amount: # pad the domain if input is non-periodic
             if self.pad_dim == '1':
@@ -167,14 +166,16 @@ class RNO2dObserverOld(nn.Module):
                 x = F.pad(x, [0,self.pad_amount[0]])
                 x = x.permute(0, 1, 2, 4, 3)
                 x = F.pad(x, [0,self.pad_amount[1]])
-
-        hidden_seq1 = self.layer1(x, h1)
-        hidden_seq2 = self.layer2(hidden_seq1, h2)
-        h = self.layer3(hidden_seq2, h3) # output shape is (batch, width, domain_size)
-
-        # Save final hidden states
-        final_hidden_states = [hidden_seq1[:,-1], hidden_seq2[:,-1], h]
-
+        
+        final_hidden_states = []
+        for i in range(self.layer_num):
+            x = self.layers[i](x, init_hidden_states[i])
+            if i < self.layer_num - 1:
+                final_hidden_states.append(x[:, -1])
+            else:
+                final_hidden_states.append(x)
+        h = final_hidden_states[-1]
+        
         if self.pad_amount: # remove padding
             if self.pad_dim == '1':
                 h = h[:, :, :-self.pad_amount[0]]
@@ -189,7 +190,7 @@ class RNO2dObserverOld(nn.Module):
 
         return pred, final_hidden_states
 
-    def forward(self, x, v_plane=None, timestep=2, init_hidden_states=[None, None, None]):
+    def forward(self, x, v_plane=None, timestep=2):
         bs, timestep, xshape, yshape, dim = x.shape
         result = self.predict(x, num_steps=timestep)
         result = result[:, self.recurrent_index, :, :, :]
@@ -197,10 +198,10 @@ class RNO2dObserverOld(nn.Module):
 
     def predict(self, x, num_steps): # num_steps is the number of steps ahead to predict
         output = []
-        states = [None, None, None]
+        states = [None] * self.layer_num
         
         for i in range(num_steps):
-            pred, states = self.forward_one_step(x, states)
+            pred, states = self.forward_one_step(x, init_hidden_states=states)
             output.append(pred)
             x = pred.reshape((pred.shape[0], 1, pred.shape[1], pred.shape[2], pred.shape[3]))
 

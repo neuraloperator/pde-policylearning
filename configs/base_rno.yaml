@@ -1,6 +1,6 @@
 DATA_FOLDER: './data/planes_channel180_minchan'
 project_name: 'fno_vs_unet'
-exp_name: '14-RNO-base-original-loss-add positional'
+exp_name: '20-RNO-layer num 10'
 path_name: planes_channel180_minchan
 model_name: RNO2dObserverOld
 learning_rate: 0.001
@@ -22,3 +22,5 @@ use_patch: false
 timestep: 2
 recurrent_model: true
 recurrent_index: 0
+random_split: false
+layer_num: 10  # use 10 as a full model

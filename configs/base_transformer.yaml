@@ -21,6 +21,7 @@ use_v_plane: false
 use_patch: false
 timestep: 2
 recurrent_model: false
+random_split: false
 model:
   node_feats: 1
   edge_feats: null
