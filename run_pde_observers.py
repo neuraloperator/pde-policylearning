@@ -160,6 +160,8 @@ def main(args):
                 out = out.reshape(-1, args.x_range, args.y_range)
                 if args.using_transformer:
                     p_plane = p_plane.reshape(-1, args.x_range, args.y_range, 1)
+                elif args.recurrent_model:
+                    p_plane = p_plane[:, args.recurrent_index, :, :, :]
                 out_decoded = train_dataset.v_norm.cuda_decode(out)
                 v_plane = v_plane.squeeze()
                 p_plane_decoded = train_dataset.p_norm.cuda_decode(p_plane)
@@ -208,7 +210,8 @@ def main(args):
     # making the plots
     ################################################################
     # Plots
-    for index in [0, 5, 10, 19]:
+    data_num = dat['y'].shape[0]
+    for index in range(0, data_num - 1, 5):
         vmin = dat['y'][index, :, :].min()
         vmax = dat['y'][index, :, :].max()
         fig, axes = plt.subplots(nrows=1, ncols=4, figsize=(18, 4))

@@ -1,6 +1,6 @@
 DATA_FOLDER: './data/planes_channel180_minchan'
 project_name: 'fno_vs_unet'
-exp_name: '5-RNO-base-original-loss-correct-loss-magnitude'
+exp_name: '14-RNO-base-original-loss-add positional'
 path_name: planes_channel180_minchan
 model_name: RNO2dObserverOld
 learning_rate: 0.001
@@ -10,7 +10,7 @@ step_size: 100
 gamma: 0.5
 modes: 12
 width: 32
-close_wandb: true
+close_wandb: false
 batch_size: 20
 downsample_rate: 1
 x_range: 32

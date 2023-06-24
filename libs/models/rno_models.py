@@ -29,6 +29,7 @@ sys.path.append('ks')
 
 from libs.models.fno_models import SpectralConv2d
 from libs.utilities3 import *
+from libs.models.attention_layers import PositionalEncoding
 
 torch.manual_seed(0)
 np.random.seed(0)
@@ -143,10 +144,12 @@ class RNO2dObserverOld(nn.Module):
         self.layer3 = RNO_layer(self.width, self.width, modes1, modes2, width, return_sequences=False)
 
         self.q = nn.Linear(self.width, self.out_dim)
+        self.pos = PositionalEncoding(d_model=1, dropout=0.0)
     
     def forward_one_step(self, x, v_plane=None, init_hidden_states=[None, None, None]): # h must be padded if using padding
         batch_size, timesteps, dom_size1, dom_size2, dim = x.shape
         h1, h2, h3 = init_hidden_states
+        x = self.pos(x.reshape(batch_size, timesteps, -1)).reshape(x.shape)
         grid = self.get_grid(x.shape, x.device)
         x = torch.cat((x, grid), dim=-1)
         x = self.p(x)
