@@ -2,6 +2,7 @@ import cv2
 import numpy as np
 import matplotlib.pyplot as plt
 import imageio
+import wandb
 
 
 def matrix2image(matrix, height=300, width=300, extend_value=0.5):
@@ -61,3 +62,24 @@ def visualize_pressure_speed(pressure, pressure_min, pressure_max, speed_horizon
         imageio.imwrite(f'outputs/{vis_name}.png', image)
     image = image[:, :, [2, 1, 0, 3]]  # switch channel
     return image
+
+
+def vis_diagram(dat):
+    data_num = dat['y'].shape[0]
+    for index in range(0, data_num - 1, 5):
+        vmin = dat['y'][index, :, :].min()
+        vmax = dat['y'][index, :, :].max()
+        fig, axes = plt.subplots(nrows=1, ncols=4, figsize=(18, 4))
+        plt.subplot(1, 3, 1)
+        im1 = plt.imshow(dat['x'][index, :, :, 0], cmap='jet', aspect='auto')
+        plt.title('Input')
+        plt.subplot(1, 3, 2)
+        im2 = plt.imshow(dat['y'][index, :, :], cmap='jet', aspect='auto', vmin=vmin, vmax=vmax)
+        plt.title('True Output')
+        plt.subplot(1, 3, 3)
+        im3 = plt.imshow(dat['pred'][index, :, :], cmap='jet', aspect='auto', vmin=vmin, vmax=vmax)
+        plt.title('Prediction')
+        cbar_ax = fig.add_axes([.92, 0.15, 0.04, 0.7])
+        fig.colorbar(im3, cax=cbar_ax)
+        wandb.log({f"data_id_{index}": plt})
+    return

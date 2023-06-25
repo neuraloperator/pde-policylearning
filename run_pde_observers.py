@@ -16,6 +16,7 @@ from libs.unet_models import *
 from libs.models.fno_models import *
 from libs.models.rno_models import *
 from libs.models.transformer_models import *
+from libs.visualization import *
 from libs.pde_data_loader import *
 from libs.arguments import *
 from libs.metrics import *
@@ -183,26 +184,9 @@ def main(args, sample_data=False, train_shuffle=True):
             best_loss = test_l2
             dat = {'x': p_plane_decoded.cpu().numpy(), 'pred': out_decoded.cpu().numpy(), 'y': v_plane_decoded.cpu().numpy(),}
             if not args.close_wandb:
-                data_num = dat['y'].shape[0]
-                for index in range(0, data_num - 1, 5):
-                    vmin = dat['y'][index, :, :].min()
-                    vmax = dat['y'][index, :, :].max()
-                    fig, axes = plt.subplots(nrows=1, ncols=4, figsize=(18, 4))
-                    plt.subplot(1, 3, 1)
-                    im1 = plt.imshow(dat['x'][index, :, :, 0], cmap='jet', aspect='auto')
-                    plt.title('Input')
-                    plt.subplot(1, 3, 2)
-                    im2 = plt.imshow(dat['y'][index, :, :], cmap='jet', aspect='auto', vmin=vmin, vmax=vmax)
-                    plt.title('True Output')
-                    plt.subplot(1, 3, 3)
-                    im3 = plt.imshow(dat['pred'][index, :, :], cmap='jet', aspect='auto', vmin=vmin, vmax=vmax)
-                    plt.title('Prediction')
-                    cbar_ax = fig.add_axes([.92, 0.15, 0.04, 0.7])
-                    fig.colorbar(im3, cax=cbar_ax)
-                    wandb.log({f"data_id_{index}": plt})
+                vis_diagram(dat)
                 torch.save(model, f"./outputs/{args.path_name}_{args.exp_name}.pth")
         print(f"epoch: {ep}, time passed: {t2-t1}, train loss: {train_l2}, test loss: {test_l2}, best loss: {best_loss}.")
-
         avg_metrics = {"train/avg_train_loss": train_l2,
                     "test/avg_test_loss": test_l2,
                     "test/best_loss": best_loss}
@@ -210,29 +194,8 @@ def main(args, sample_data=False, train_shuffle=True):
         if not args.close_wandb:
             wandb.log(avg_metrics)
             
-    ################################################################
-    # making the plots
-    ################################################################
-    # Plots
-    data_num = dat['y'].shape[0]
-    for index in range(0, data_num - 1, 5):
-        vmin = dat['y'][index, :, :].min()
-        vmax = dat['y'][index, :, :].max()
-        fig, axes = plt.subplots(nrows=1, ncols=4, figsize=(18, 4))
-        plt.subplot(1, 3, 1)
-        im1 = plt.imshow(dat['x'][index, :, :, 0], cmap='jet', aspect='auto')
-        plt.title('Input')
-        plt.subplot(1, 3, 2)
-        im2 = plt.imshow(dat['y'][index, :, :], cmap='jet', aspect='auto', vmin=vmin, vmax=vmax)
-        plt.title('True Output')
-        plt.subplot(1, 3, 3)
-        im3 = plt.imshow(dat['pred'][index, :, :], cmap='jet', aspect='auto', vmin=vmin, vmax=vmax)
-        plt.title('Prediction')
-        cbar_ax = fig.add_axes([.92, 0.15, 0.04, 0.7])
-        fig.colorbar(im3, cax=cbar_ax)
-        if not args.close_wandb:
-            wandb.log({f"chart_{index}": plt})
     if not args.close_wandb:
+        vis_diagram(dat)
         wandb.finish()
 
 
