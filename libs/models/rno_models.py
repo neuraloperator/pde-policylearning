@@ -18,18 +18,15 @@ import torch
 import numpy as np
 import torch.nn as nn
 import torch.nn.functional as F
-
 import operator
 from functools import reduce
-
 import scipy.io
-
 import sys
 sys.path.append('ks')
-
 from libs.models.fno_models import SpectralConv2d
+from libs.models.transformer_models import SpectralRegressor, SimpleTransformerEncoderLayer
 from libs.utilities3 import *
-from libs.models.attention_layers import PositionalEncoding
+from libs.models.attention_layers import PositionalEncoding, NeRFPosEmbedding
 
 torch.manual_seed(0)
 np.random.seed(0)
@@ -71,32 +68,34 @@ class RNO_cell(nn.Module):
         self.f4 = FourierLayer2d(self.modes1, self.modes2, self.width)
         self.f5 = FourierLayer2d(self.modes1, self.modes2, self.width)
         self.f6 = FourierLayer2d(self.modes1, self.modes2, self.width)
+        self.f7 = FourierLayer2d(self.modes1, self.modes2, self.width)
+        self.f8 = FourierLayer2d(self.modes1, self.modes2, self.width)
 
-        self.b1 = nn.Parameter(torch.normal(torch.tensor(0.),torch.tensor(1.))) # constant bias terms
+        self.b1 = nn.Parameter(torch.normal(torch.tensor(0.),torch.tensor(1.)))
+        # constant bias terms
         self.b2 = nn.Parameter(torch.normal(torch.tensor(0.),torch.tensor(1.)))
         self.b3 = nn.Parameter(torch.normal(torch.tensor(0.),torch.tensor(1.)))
+        self.b4 = nn.Parameter(torch.normal(torch.tensor(0.),torch.tensor(1.)))
     
     def forward(self, x, h):
         z = torch.sigmoid(self.f1(x) + self.f2(h) + self.b1)
+        z2 = torch.sigmoid(self.f7(x) + self.f8(h) + self.b4)
         r = torch.sigmoid(self.f3(x) + self.f4(h) + self.b2)
         h_hat = F.selu(self.f5(x) + self.f6(r * h) + self.b3) # selu for regression problem
-
-        h_next = (1. - z) * h + z * h_hat
-
+        h_next = (1. - z) * h + z2 * h_hat
+        # h_next = (1. - z) * h + z * h_hat
         return h_next
 
 
 class RNO_layer(nn.Module):
     def __init__(self, in_dim, out_dim, modes1, modes2, width, return_sequences=False):
         super(RNO_layer, self).__init__()
-
         self.modes1 = modes1
         self.modes2 = modes2
         self.width = width
         self.in_dim = in_dim
         self.out_dim = out_dim
         self.return_sequences = return_sequences
-
         self.cell = RNO_cell(in_dim, out_dim, modes1, modes2, width)
         self.bias_h = nn.Parameter(torch.normal(torch.tensor(0.),torch.tensor(1.)))
 
@@ -106,7 +105,6 @@ class RNO_layer(nn.Module):
         if h is None:
             h = torch.zeros((batch_size, self.width, dom_size1, dom_size2)).to(x.device)
             h += self.bias_h
-
         outputs = []
         for i in range(timesteps):
             h = self.cell(x[:, i], h)
@@ -127,32 +125,54 @@ class RNO2dObserverOld(nn.Module):
             specifies that dimension should be padded.
         """
         super(RNO2dObserverOld, self).__init__()
-
         self.modes1 = modes1
         self.modes1 = modes2
         self.width = width
         self.pad_amount = pad_amount # pads dom_size1 dimension
         self.pad_dim = pad_dim
         self.recurrent_index = recurrent_index
-        self.in_dim = 3
+        data_in_dim, pos_in_dim = 1, 0
+        self.in_dim = data_in_dim + pos_in_dim
         self.out_dim = 1
         self.layer_num = layer_num
-        self.p = nn.Linear(self.in_dim, self.width) # input channel_dim is in_dim + 1: u is in-dim, and grid is 2 dim
+        self.input_projection_layer = nn.Linear(self.in_dim, self.width) # input channel_dim is in_dim + 1: u is in-dim, and grid is 2 dim
+        torch.nn.init.normal_(self.input_projection_layer.weight, mean=0, std=1)
         module_list = [RNO_layer(self.width, self.width, modes1, modes2, width, return_sequences=True)
                                      for _ in range(layer_num - 1)]
         module_list.append(RNO_layer(self.width, self.width, modes1, modes2, width, return_sequences=False))
         self.layers = nn.ModuleList(module_list)
-        self.q = nn.Linear(self.width, self.out_dim)
-        self.pos = PositionalEncoding(d_model=1, dropout=0.0)
+        self.regressor = SpectralRegressor(in_dim=self.width, n_hidden=self.width, freq_dim=self.width, 
+                                           out_dim=self.out_dim, modes=modes2, activation='relu', dropout=0.3)
+        # self.temporal_pos = PositionalEncoding(d_model=1, dropout=0.0)
+        # self.nerf_pos = NeRFPosEmbedding(num_freqs=2)
+        # self.transformer_layer = SimpleTransformerEncoderLayer(d_model=self.width,
+        #                                                 pos_emb=True,
+        #                                                 n_head=1,
+        #                                                 attention_type='fourier',
+        #                                                 dim_feedforward=192,
+        #                                                 layer_norm=False,
+        #                                                 attn_norm=True,
+        #                                                 norm_type='layer',
+        #                                                 batch_norm=False,
+        #                                                 pos_dim=1,
+        #                                                 xavier_init=0.001,
+        #                                                 diagonal_weight=1e-2,
+        #                                                 symmetric_init=False,
+        #                                                 attn_weight=False,
+        #                                                 residual_type='plus',
+        #                                                 activation_type='relu',
+        #                                                 dropout=0.1,
+        #                                                 ffn_dropout=None,
+        #                                                 debug=False)
     
     def forward_one_step(self, x, v_plane=None, init_hidden_states=None): # h must be padded if using padding
-        batch_size, timesteps, dom_size1, dom_size2, dim = x.shape
         if init_hidden_states is None:
             init_hidden_states = [None] * self.layer_num
-        x = self.pos(x.reshape(batch_size, timesteps, -1)).reshape(x.shape)
-        grid = self.get_grid(x.shape, x.device)
-        x = torch.cat((x, grid), dim=-1)
-        x = self.p(x)
+        batch_size, timesteps, dom_size1, dom_size2, dim = x.shape
+        # x = self.temporal_pos(x.reshape(batch_size, timesteps, -1)).reshape(x.shape)
+        # grid = self.get_grid(x.shape, x.device)
+        # x = torch.cat((x, grid), dim=-1)
+        x = self.input_projection_layer(x)
         x = x.permute(0, 1, 4, 2, 3) # new shape: (batch, timesteps, dim, dom_size1, dom_size2)
         if self.pad_amount: # pad the domain if input is non-periodic
             if self.pad_dim == '1':
@@ -166,13 +186,17 @@ class RNO2dObserverOld(nn.Module):
                 x = F.pad(x, [0,self.pad_amount[0]])
                 x = x.permute(0, 1, 2, 4, 3)
                 x = F.pad(x, [0,self.pad_amount[1]])
-        
+                
         final_hidden_states = []
         for i in range(self.layer_num):
-            x = self.layers[i](x, init_hidden_states[i])
+            # x = self.layers[i](x, init_hidden_states[i])
+            pred_x = self.layers[i](x, init_hidden_states[i])
+            # using residual predictions
             if i < self.layer_num - 1:
+                x = x + pred_x
                 final_hidden_states.append(x[:, -1])
             else:
+                x = pred_x
                 final_hidden_states.append(x)
         h = final_hidden_states[-1]
         
@@ -184,10 +208,9 @@ class RNO2dObserverOld(nn.Module):
             elif self.pad_dim == 'both':
                 h = h[:, :, :-self.pad_amount[0]]
                 h = h[..., :-self.pad_amount[1]]
-
+        
         h = h.permute(0, 2, 3, 1)
-        pred = self.q(h)
-
+        pred = self.regressor(h)
         return pred, final_hidden_states
 
     def forward(self, x, v_plane=None, timestep=2):
@@ -217,6 +240,5 @@ class RNO2dObserverOld(nn.Module):
         return torch.cat((gridx, gridy), dim=-1).to(device)
 
     def count_params(self):
-        # Credit: Vadim Smolyakov on PyTorch forum
         model_parameters = filter(lambda p: p.requires_grad, self.parameters())
         return int(sum([np.prod(p.size()) for p in model_parameters]))

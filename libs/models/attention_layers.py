@@ -118,15 +118,14 @@ class PositionalEncoding(nn.Module):
         self.dropout = nn.Dropout(dropout)
         pe = torch.zeros(max_len, d_model)
         position = torch.arange(0, max_len, dtype=torch.float).unsqueeze(1)
-        div_term = torch.exp(torch.arange(
-            0, d_model, 2).float() * (-math.log(2**13) / d_model))
+        div_term = torch.exp(torch.arange(0, d_model, 2).float() * (-math.log(2**13) / d_model))
         pe[:, 0::2] = torch.sin(position * div_term)
         pe[:, 1::2] = torch.cos(position * div_term)
         pe = pe.unsqueeze(0)
         self.register_buffer('pe', pe)
 
     def forward(self, x):
-        x = x + self.pe[:, :x.size(1), :]
+        x = x + self.pe[:, :x.size(1), :x.size(2)]
         return self.dropout(x)
 
 
@@ -1208,11 +1207,9 @@ class SpectralConv2d(nn.Module):
         self.activation = nn.SiLU() if activation == 'silu' else nn.ReLU()
         self.n_grid = n_grid  # just for debugging
         self.fourier_weight = nn.ParameterList([Parameter(
-            torch.FloatTensor(in_dim, out_dim,
-                                                modes, modes, 2)) for _ in range(2)])
+            torch.FloatTensor(in_dim, out_dim, modes, modes, 2)) for _ in range(2)])
         for param in self.fourier_weight:
-            xavier_normal_(param, gain=1/(in_dim*out_dim)
-                           * np.sqrt(in_dim+out_dim))
+            xavier_normal_(param, gain=1/(in_dim*out_dim) * np.sqrt(in_dim+out_dim))
         self.dropout = nn.Dropout(dropout)
         self.norm = norm
         self.return_freq = return_freq
