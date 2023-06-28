@@ -74,9 +74,10 @@ class NSControl:
         self.W_gt = self.W.copy()
         np.random.seed(0)
         self.s = np.random.default_rng()
-        # Call matlab main directly.
-        # status = self.eng.main(to_m(x),to_m(y),to_m(z),to_m(xm),to_m(ym),to_m(zm),to_m(UU),to_m(VV),to_m(WW))
-
+        # # Call matlab main directly.
+        # status = self.eng.main(to_m(self.x),to_m(self.y),to_m(self.z),to_m(self.xm),
+        #                        to_m(self.ym),to_m(self.zm),to_m(self.UU),to_m(self.VV),
+        #                        to_m(self.WW))
         # Define modified wavenumbers
         self.kxx = np.zeros(self.Nx)
         self.kzz = np.zeros(self.Nz)
@@ -125,7 +126,7 @@ class NSControl:
         return
 
     def compute_div(self):
-        div = np.zeros((self.Nx, self.Ny-1, self.Nz))
+        div1 = np.zeros((self.Nx, self.Ny-1, self.Nz))
         uxsum, uysum, uzsum = 0, 0, 0
         for j in range(self.Ny-1):
             prev_u, prev_w = self.U[:, j+1, :], self.W[:, j+1, :]
@@ -134,11 +135,13 @@ class NSControl:
             ux = (next_u - prev_u) / self.dx 
             uy = (self.V[:, j+1, :] - self.V[:, j, :]) / (self.y[j+1] - self.y[j])
             uz = (next_w - prev_w) / self.dz
-            # print(f"uxyz is: {np.sum(abs(ux))}, {np.sum(uy)}, {np.sum(uz)}. ")
             uxsum += np.abs(ux)
             uysum += np.abs(uy)
             uzsum += np.abs(uz)
-            div[:, j, :] = ux + uy + uz
+            div1[:, j, :] = ux + uy + uz
+        div = self.eng.compute_div(to_m(self.U), to_m(self.V), to_m(self.W), to_m(self.dx), to_m(self.y), to_m(self.dz),\
+            to_m(self.Nx), to_m(self.Ny), to_m(self.Nz))
+        div = np.array(div)
         return div
 
     def reward_div(self, bound=-100):
@@ -213,13 +216,16 @@ class NSControl:
     def rand_control(self, P):
         opV2 = self.eng.compute_opposition(to_m(P))
         return np.array(opV2)
+    
+    def speed_norm(self, ):
+        return np.linalg.norm(self.V)
 
     def step(self, opV2):
         # Perform one step in the environment
         # Update state, calculate reward, check termination condition, etc.
         # Return the next state, reward, termination flag, and additional info
         prev_U, prev_V, prev_W = self.U.copy(), self.V.copy(), self.W.copy()
-        U, V, W = self.eng.time_advance_RK3(opV2, to_m(self.U), to_m(self.V), to_m(self.W), to_m(self.nu), to_m(self.dPdx), \
+        U, V, W = self.eng.time_advance_RK3(to_m(opV2), to_m(self.U), to_m(self.V), to_m(self.W), to_m(self.nu), to_m(self.dPdx), \
         to_m(self.y), to_m(self.ym), to_m(self.yg), to_m(self.dx), to_m(self.dz), to_m(self.dt), to_m(self.kxx), to_m(self.kzz), \
             to_m(self.Nx), to_m(self.Ny), to_m(self.Nz), to_m(self.DD), nargout=3)
         self.U, self.V, self.W = np.array(U), np.array(V), np.array(W)
@@ -227,6 +233,7 @@ class NSControl:
         div = self.reward_div()
         gt_diff = self.reward_gt()
         speed_diff = self.reward_td(prev_U, prev_V, prev_W)
+        speed_norm = self.speed_norm()
         done = False                                                                                # Termination flag indicating if the episode is done
-        info = {'-|divergence|': div, '-|now - unnoised| / ｜now|': gt_diff, '-|now - prev| / |now|': speed_diff}    # Additional information
+        info = {'-|divergence|': div, '-|now - unnoised| / ｜now|': gt_diff, '-|now - prev| / |now|': speed_diff, 'speed_norm': speed_norm}    # Additional information
         return next_state, div, done, info

@@ -33,8 +33,6 @@ def main(args):
         "permute": True,
         "use_spectral_conv": args.use_spectral_conv,
         "DATA_FOLDER": args.DATA_FOLDER,
-        "ntrain": args.ntrain,
-        "ntest": args.ntest,
         "modes": args.modes,
         "width": args.width,
         "r": args.downsample_rate,
@@ -67,7 +65,7 @@ def main(args):
     ################################################################
     # create dataset
     ################################################################
-    demo_dataset = PDEDataset(args.DATA_FOLDER, [1, 2, 3, 4, 5], args.downsample_rate, args.x_range, args.y_range, use_patch=False)
+    demo_dataset = PDEDataset(args, args.DATA_FOLDER, [1, 2, 3, 4, 5], args.downsample_rate, args.x_range, args.y_range, use_patch=False)
 
     ################################################################
     # main control loop
@@ -76,8 +74,8 @@ def main(args):
     for i in tqdm(range(args.timestep)):
         # pressure: [32, 32], opV2: [32, 32]
         side_pressure = control_env.get_state()
-        side_pressure = torch.tensor(side_pressure).cuda()
-        side_pressure = demo_dataset.p_norm.encode(side_pressure)
+        side_pressure = torch.tensor(side_pressure)
+        side_pressure = demo_dataset.p_norm.encode(side_pressure).cuda()
         side_pressure = side_pressure.reshape(-1, args.x_range, args.y_range, 1).float()
         if args.policy_name == 'rand':
             opV2 = control_env.rand_control(side_pressure)
@@ -85,7 +83,9 @@ def main(args):
         else:
             opV2 = model(side_pressure, None).reshape(-1, args.x_range, args.y_range)
             opV2 = demo_dataset.p_norm.decode(opV2.cpu())
-            opV2 = opV2.detach().numpy()
+            opV2 = opV2.detach().numpy().squeeze()
+        if control_env.reward_div() < -10:
+            import pdb; pdb.set_trace()
         side_pressure, reward, done, info = control_env.step(opV2)
         if not args.close_wandb:
             wandb.log(info)

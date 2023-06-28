@@ -816,7 +816,6 @@ class SimpleAttention(nn.Module):
         self.d_k = d_model // n_head
         self.n_head = n_head
         self.pos_dim = pos_dim
-        # zelin working
         self.spectral_conv = nn.ModuleList([SpectralConv1d(in_dim=self.d_k,
                                                           out_dim=self.d_k,
                                                           n_grid=None,
@@ -825,14 +824,9 @@ class SimpleAttention(nn.Module):
                                                           activation='silu',
                                                           return_freq=False,
                                                           debug=debug) for _ in range(3)])
-        # self.linears = nn.ModuleList(
-        #     [copy.deepcopy(nn.Linear(d_model, d_model)) for _ in range(3)])
         self.xavier_init = xavier_init
         self.diagonal_weight = diagonal_weight
         self.symmetric_init = symmetric_init
-        # zelin commented
-        # if self.xavier_init > 0:
-        #     self._reset_parameters()
         self.add_norm = norm
         self.norm_type = norm_type
         if norm:
@@ -906,16 +900,11 @@ class SimpleAttention(nn.Module):
                                                    mask=mask,
                                                    dropout=self.dropout)
         else:
-            # zelin working
-            # x, self.attn_weight = full_attention_conv(query, key, value, kernel='simple', output_attn=True)
             x, self.attn_weight = attention(query, key, value,
                                             mask=mask,
                                             attention_type=self.attention_type,
                                             dropout=self.dropout)
-            # x, self.attn_weight = freq_attention(query, key, value,
-            #                                 mask=mask,
-            #                                 attention_type=self.attention_type,
-            #                                 dropout=self.dropout)
+
 
         out_dim = self.n_head * self.d_k if pos is None else self.n_head * \
             (self.d_k + self.pos_dim)

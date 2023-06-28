@@ -1,5 +1,6 @@
 project_name: control_v1
-load_model_name: planes_channel180_minchan_3-system-FNO-no-scheduler.pth
+load_model_name: planes_channel180_minchan_4-FNO-base-original-loss.pth
+# load_model_name: planes_channel180_minchan_3-system-FNO-no-scheduler.pth
 display_variables:
   - policy_name
   - reward_type
@@ -12,7 +13,7 @@ use_v_plane: false
 modes: 12
 width: 32
 vis_sample_img: false
-close_wandb: false
+close_wandb: true
 timestep: 1000
 noise_scale: 0.0
 use_spectral_conv: false
@@ -20,14 +21,12 @@ use_spectral_conv: false
 downsample_rate: 1
 x_range: 32
 y_range: 32
-ntrain: 7500
-ntest: 2501
-# policy_name: fno
-policy_name: rand
+policy_name: fno
+# policy_name: rand
 reward_type: mse
 
 # visualization setttings
 vis_frame: 60
 vis_interval: 1000  # default, will be overwritten.
 output_dir: ./outputs
-rand_scale: 10
+rand_scale: 1
