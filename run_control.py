@@ -1,5 +1,12 @@
 import wandb
 import numpy as np
+import torch
+import random
+
+random.seed(0)
+torch.manual_seed(0)
+np.random.seed(0)
+
 from libs.utilities3 import *
 from libs.control_env import *
 from libs.unet_models import *
@@ -10,7 +17,6 @@ from libs.arguments import *
 # from libs.rk_algorithm import *
 from tqdm import tqdm
 import os
-import imageio
 
 
 def main(args):

@@ -8,13 +8,11 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from torch.nn.parameter import Parameter
-import matplotlib.pyplot as plt
 from timeit import default_timer
 from libs.utilities3 import *
 from libs.unet_models import *
 from libs.models.fno_models import *
-from libs.models.rno_models import *
+from libs.models.rno_models import RNO2dObserver
 from libs.models.transformer_models import *
 from libs.visualization import *
 from libs.pde_data_loader import *
@@ -65,7 +63,7 @@ def main(args, sample_data=False, train_shuffle=True):
     elif args.model_name == 'FNO2dObserver':
         model = FNO2dObserver(args.modes, args.modes, args.width, use_v_plane=args.use_v_plane).cuda()
     elif args.model_name == 'RNO2dObserverOld':
-        model = RNO2dObserverOld(args.modes, args.modes, args.width, recurrent_index=args.recurrent_index, layer_num=args.layer_num).cuda()
+        model = RNO2dObserver(args.modes, args.modes, args.width, recurrent_index=args.recurrent_index, layer_num=args.layer_num).cuda()
     elif args.model_name == 'UNet':
         use_spectral_conv = False
         model = UNet(use_spectral_conv=args.use_spectral_conv).cuda()

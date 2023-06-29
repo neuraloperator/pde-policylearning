@@ -313,7 +313,7 @@ class SpectralRegressor(nn.Module):
         n_hidden: number of hidden features out from attention to the fourier conv
         '''
         if spacial_dim == 2:  # 2d, function + (x,y)
-            spectral_conv = SpectralConv2d
+            spectral_conv = SpectralConv2dV2
         elif spacial_dim == 1:  # 1d, function + x
             spectral_conv = SpectralConv1d
         else:

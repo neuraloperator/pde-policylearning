@@ -1171,7 +1171,7 @@ class FourierSpectralConv1d(nn.Module):
             return res_x
 
 
-class SpectralConv2d(nn.Module):
+class SpectralConv2dV2(nn.Module):
     def __init__(self, in_dim,
                  out_dim,
                  modes: int,  # number of fourier modes
@@ -1181,7 +1181,7 @@ class SpectralConv2d(nn.Module):
                  activation='silu',
                  return_freq=False,  # whether to return the frequency target
                  debug=False):
-        super(SpectralConv2d, self).__init__()
+        super(SpectralConv2dV2, self).__init__()
 
         '''
         Modified Zongyi Li's SpectralConv2d PyTorch 1.6 code
