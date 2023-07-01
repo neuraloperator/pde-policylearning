@@ -47,7 +47,8 @@ def main(args):
         "rand_scale": args.rand_scale,
         "reward_type": args.reward_type,
         'noise_scale': args.noise_scale,
-        "timestep": args.timestep}
+        "timestep": args.timestep,
+        "comments": args.comments}
 
     exp_name = ""
     for one_v in args.display_variables:
@@ -86,10 +87,14 @@ def main(args):
         if args.policy_name == 'rand':
             opV2 = control_env.rand_control(side_pressure)
             opV2 *= args.rand_scale
-        else:
+        elif args.policy_name == 'fno':
             opV2 = model(side_pressure, None).reshape(-1, args.x_range, args.y_range)
             opV2 = demo_dataset.p_norm.decode(opV2.cpu())
             opV2 = opV2.detach().numpy().squeeze()
+        elif args.policy_name == 'gt':
+            opV2 = control_env.gt_control()
+        else:
+            raise RuntimeError("Not supported policy name.")
         if control_env.reward_div() < -10:
             import pdb; pdb.set_trace()
         side_pressure, reward, done, info = control_env.step(opV2)
@@ -100,8 +105,8 @@ def main(args):
             top_view_v.append(top_view)
             front_view_v.append(front_view)
             side_view_v.append(side_view)
-            cur_opV2_image = matrix2image(opV2, extend_value=0.2)
-            cur_pressure_image = matrix2image(side_pressure, extend_value=0.2)
+            cur_opV2_image = matrix2image(control_env.V[:, -10, :], extend_value=1e-2)
+            cur_pressure_image = matrix2image(side_pressure, extend_value=1e-2)
             opV2_v.append(cur_opV2_image)
             pressure_v.append(cur_pressure_image)
         print(f"timestep: {i}, scores: {info}")
@@ -127,5 +132,4 @@ if __name__ == '__main__':
     args.vis_interval = max(args.timestep // args.vis_frame, 1)
     if not args.close_wandb:
         wandb.login()
-    # save_arguments_to_yaml(args, )
     main(args)

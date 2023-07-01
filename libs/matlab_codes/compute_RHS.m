@@ -31,7 +31,7 @@ end
 % compute 1/Re*d^2u/dz^2
 Fu = Fu + nu * ( U(:,:,[2:end,1]) - 2*U + U(:,:,[end,1:end-1]) )/dz^2;
 
-% add pressure gradient
+% add pressure gradient Fu = Fu + dPdx;
 Fu = Fu + dPdx;
 
 % boundary conditions

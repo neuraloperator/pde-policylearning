@@ -223,8 +223,7 @@ class FourierLayer2d(nn.Module):
 
     def forward(self, x):
         batch_size, dim, dom_size1, dom_size2 = x.shape
-        # x1 = self.spec_conv(x.permute(0, 2, 3, 1)).permute(0, 3, 1, 2)  # use v2
-        x1 = self.spec_conv(x)  # use v1
+        x1 = self.spec_conv(x)
         x2 = self.norm_conv1d(x.reshape((batch_size, dim, dom_size1 * dom_size2))).view(batch_size, self.width, dom_size1, dom_size2)
         return x1 + x2
 

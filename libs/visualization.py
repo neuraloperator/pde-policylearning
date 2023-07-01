@@ -5,16 +5,21 @@ import imageio
 import wandb
 
 
-def matrix2image(matrix, height=300, width=300, extend_value=0.5):
-    matrix = (matrix - matrix.min()) / (matrix.max() - matrix.min())
-    plt.imshow(np.squeeze(matrix), cmap='jet', interpolation='nearest', vmin=matrix.min()-extend_value, vmax=matrix.max() + extend_value)
+def matrix2image(matrix, height=300, width=300, extend_value=0.5, eps=1e-9, normalize=False):
+    if normalize:
+        if matrix.max() - matrix.min() < eps:
+            matrix = matrix
+        else:
+            matrix = (matrix - matrix.min()) / (matrix.max() - matrix.min())
+    plt.imshow(np.squeeze(matrix), cmap='jet', interpolation='nearest', vmin=-extend_value, vmax=extend_value)
     plt.colorbar()
     plt.tight_layout()  # Adjust the layout to prevent overlap
     # Save the heatmap image to disk
     plt.draw()
     image = np.array(plt.gcf().canvas.renderer._renderer)
     plt.close()
-    # imageio.imwrite('debug.png', image)
+    # imageio.imwrite('outputs/debug.png', image)
+    # import pdb; pdb.set_trace()
     return image
 
 

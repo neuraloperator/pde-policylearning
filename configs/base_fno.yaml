@@ -1,6 +1,6 @@
 DATA_FOLDER: './data/planes_channel180_minchan'
 project_name: 'fno_vs_unet'
-exp_name: '4-FNO-base-original-loss'
+exp_name: '31-FNO-reproduce'
 path_name: planes_channel180_minchan
 model_name: FNO2dObserver
 learning_rate: 0.001
@@ -10,13 +10,13 @@ step_size: 100
 gamma: 0.5
 modes: 12
 width: 32
-close_wandb: true
+close_wandb: false
 batch_size: 20
 downsample_rate: 1
 x_range: 32
 y_range: 32
 ntrain: 7500
-ntest: 2501
+ntest: 2500
 use_v_plane: false
 use_patch: false
 timestep: -1

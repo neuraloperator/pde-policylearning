@@ -105,14 +105,20 @@ class NSControl:
         self.DD[-1, -1] += 1 / (self.y[self.Ny-1] - self.y[self.Ny-2]) / (self.yg[self.Ny] - self.yg[self.Ny-1])
 
         self.add_random_noise(noise_scale)
-        print(f"Initially, the divergence is {self.reward_div()}, the mse is {self.reward_gt()}")
-        init_p = self.compute_pressure()
+        # make a step forward
+        self.dpdx_init, self.shear_init = None, None
+        if noise_scale - 0.0 > 0.01:   # reduce the effect of noises
+            self.step(self.rand_control(self.get_state()))
+        print(f"Initially, the divergence is {self.reward_div()}.")
+        init_p = self.cal_pressure()
         # Used in normalization
         self.speed_min = min(self.U.min(), self.V.min(), self.W.min())
         self.speed_max = max(self.U.max(), self.V.max(), self.W.max())
         self.p_min = max(-2.0, init_p.min())
         self.p_max = min(init_p.max(), 1.5)
-        # init_opV2 = self.rand_control(init_p)
+        self.dpdx_init, self.shear_init = None, None  # reset the dpdx and shear
+        self.dpdx_init = self.cal_pressure_gradient(self.get_state())
+        self.shear_init = self.cal_shear_velocity(self.V, self.W)
 
     def add_random_noise(self, noise_scale, overwrite=False):
         if overwrite:
@@ -124,8 +130,12 @@ class NSControl:
             self.V += np.random.normal(scale=noise_scale, size=self.V.shape)
             self.W += np.random.normal(scale=noise_scale, size=self.W.shape)
         return
-
-    def compute_div(self):
+    
+    '''
+    Calculating scores.
+    '''
+    
+    def cal_div(self):
         div1 = np.zeros((self.Nx, self.Ny-1, self.Nz))
         uxsum, uysum, uzsum = 0, 0, 0
         for j in range(self.Ny-1):
@@ -144,8 +154,41 @@ class NSControl:
         div = np.array(div)
         return div
 
+    def cal_pressure(self,):
+        # this is the observation function
+        self.P  = self.eng.compute_pressure(to_m(self.U), to_m(self.V), to_m(self.W), to_m(self.nu), to_m(self.dPdx), to_m(self.y), to_m(self.ym), \
+        to_m(self.yg), to_m(self.dx), to_m(self.dz), to_m(self.kxx), to_m(self.kzz), to_m(self.Nx), to_m(self.Ny), to_m(self.Nz), to_m(self.DD))
+        self.P = np.array(self.P)
+        return self.P
+
+    def cal_pressure_gradient(self, pressure_top):
+        grad_total, num = 0, 0
+        for select_index in range(pressure_top.shape[0] - 1):
+            pressure_gradient = (np.mean(pressure_top[select_index + 1, :]) - 
+                                 np.mean(pressure_top[select_index, :])) / self.dx[0]
+            grad_total += pressure_gradient
+            num += 1
+        mean_pg = abs(grad_total / num)
+        if self.dpdx_init is None:
+            return mean_pg
+        else:
+            relative_dpdx = mean_pg / self.dpdx_init
+            return relative_dpdx
+    
+    def cal_shear_velocity(self, V, W):
+        # top_v = V[:, -1, :]
+        # top_w = W[:, -1, :]
+        # mean_shear_velocity = np.sum(top_v**2 + top_w**2)
+        
+        mean_shear_velocity = np.sum(V**2)
+        if self.shear_init is None:
+            return mean_shear_velocity
+        else:
+            relative_vel = mean_shear_velocity / self.shear_init
+            return relative_vel
+
     def reward_div(self, bound=-100):
-        reward = - abs(np.sum(self.compute_div()))
+        reward = - abs(np.sum(self.cal_div()))
         if reward < bound:
             reward = bound
         return reward
@@ -168,53 +211,50 @@ class NSControl:
             reward = bound
         return reward
 
-    def compute_pressure(self,):
-        # this is the observation function
-        self.P  = self.eng.compute_pressure(to_m(self.U), to_m(self.V), to_m(self.W), to_m(self.nu), to_m(self.dPdx), to_m(self.y), to_m(self.ym), \
-        to_m(self.yg), to_m(self.dx), to_m(self.dz), to_m(self.kxx), to_m(self.kzz), to_m(self.Nx), to_m(self.Ny), to_m(self.Nz), to_m(self.DD))
-        self.P = np.array(self.P)
-        return self.P
-
     def get_state(self):
-        pressure = self.compute_pressure()                    # Next state after taking the action
+        pressure = self.cal_pressure()                    # Next state after taking the action
         next_state = np.squeeze(-0.5 * (pressure[:, -1, :] + pressure[:, -2, :]))
         return next_state
     
     def vis_state(self, vis_img=False, sample_slice_top=15, sample_slice_others=10):
-        p_min, p_max = -0.05, 0.05
-        pressure = self.compute_pressure()
+        pressure = self.cal_pressure()
         cut_dim = self.U.shape[0]
         # get front view
         mid_index = pressure.shape[2] // sample_slice_others
         front_pressure = pressure[:, :cut_dim, mid_index].transpose()
-        u_in_xy = self.U[:, :cut_dim, mid_index].transpose()
+        u_in_xy = self.U[:, :cut_dim, mid_index].transpose() / 10000
         v_in_xy = self.V[:, :cut_dim, mid_index].transpose()
-        front_view = visualize_pressure_speed(front_pressure, pressure_min=p_min, pressure_max=p_max, \
-            speed_horizontal=u_in_xy, speed_vertical=v_in_xy, vis_img=vis_img, vis_name='front', quiver_scale=0.3, \
+        front_view = visualize_pressure_speed(front_pressure, pressure_min=-0.01, pressure_max=0.01, \
+            speed_horizontal=u_in_xy, speed_vertical=v_in_xy, vis_img=vis_img, vis_name='front', quiver_scale=0.01, \
             x_sample_interval=2, y_sample_interval=2)
-        
+
         # get top view
         mid_index = pressure.shape[1] // sample_slice_top
         top_pressure = np.squeeze(-0.5 * (pressure[:, -1, :] + pressure[:, -2, :]))
-        u_in_xz = self.U[:, mid_index, :]
-        w_in_xz = self.W[:, mid_index, :]
-        top_view = visualize_pressure_speed(top_pressure, pressure_min=p_min, pressure_max=p_max, \
-            speed_horizontal=u_in_xz, speed_vertical=w_in_xz, vis_img=vis_img, quiver_scale=0.06, vis_name='top',)
+        u_in_xz = self.U[:, -mid_index, :] - self.U[:, -mid_index, :].mean()
+        w_in_xz = self.W[:, -mid_index, :]
+        top_view = visualize_pressure_speed(top_pressure, pressure_min=-0.03, pressure_max=0.03, \
+            speed_horizontal=u_in_xz, speed_vertical=w_in_xz, vis_img=vis_img, quiver_scale=0.05, vis_name='top',)
 
         # get side view
         sample_index = pressure.shape[0] // sample_slice_others
         side_pressure = pressure[sample_index, :cut_dim, :]
         v_in_yz = self.V[sample_index, :cut_dim, :]
         w_in_yz = self.W[sample_index, :cut_dim, :]
-        side_view = visualize_pressure_speed(side_pressure, pressure_min=p_min, pressure_max=p_max, \
+        side_view = visualize_pressure_speed(side_pressure, pressure_min=-0.005, pressure_max=0.005, \
             speed_horizontal=w_in_yz, speed_vertical=v_in_yz, vis_img=vis_img, vis_name='side', \
-                quiver_scale=0.3, x_sample_interval=2, y_sample_interval=2)
+                quiver_scale=0.03, x_sample_interval=2, y_sample_interval=2)
         if vis_img:
             import pdb; pdb.set_trace()
         return top_view, front_view, side_view
     
     def rand_control(self, P):
         opV2 = self.eng.compute_opposition(to_m(P))
+        return np.array(opV2)
+    
+    def gt_control(self, plane_index=-10):
+        top_speed = self.V[:, -plane_index, :]
+        opV2 = top_speed
         return np.array(opV2)
     
     def speed_norm(self, ):
@@ -229,11 +269,14 @@ class NSControl:
         to_m(self.y), to_m(self.ym), to_m(self.yg), to_m(self.dx), to_m(self.dz), to_m(self.dt), to_m(self.kxx), to_m(self.kzz), \
             to_m(self.Nx), to_m(self.Ny), to_m(self.Nz), to_m(self.DD), nargout=3)
         self.U, self.V, self.W = np.array(U), np.array(V), np.array(W)
-        next_state = self.get_state()
+        pressure_top = self.get_state()
         div = self.reward_div()
+        pressure_gradient = self.cal_pressure_gradient(pressure_top)
+        shear_velocity = self.cal_shear_velocity(self.V, self.W)
         gt_diff = self.reward_gt()
         speed_diff = self.reward_td(prev_U, prev_V, prev_W)
         speed_norm = self.speed_norm()
-        done = False                                                                                # Termination flag indicating if the episode is done
-        info = {'-|divergence|': div, '-|now - unnoised| / ｜now|': gt_diff, '-|now - prev| / |now|': speed_diff, 'speed_norm': speed_norm}    # Additional information
-        return next_state, div, done, info
+        done = False
+        info = {'dPdx': pressure_gradient, '|u_tau|^2': shear_velocity, '-|divergence|': div, 
+                '-|now - unnoised| ÷ ｜now|': gt_diff, '-|now - prev| ÷ |now|': speed_diff, 'speed_norm': speed_norm} 
+        return pressure_top, div, done, info
