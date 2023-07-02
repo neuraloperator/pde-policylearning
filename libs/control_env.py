@@ -118,7 +118,7 @@ class NSControl:
         self.p_max = min(init_p.max(), 1.5)
         self.dpdx_init, self.shear_init = None, None  # reset the dpdx and shear
         self.dpdx_init = self.cal_pressure_gradient(self.get_state())
-        self.shear_init = self.cal_shear_velocity(self.V, self.W)
+        self.shear_init = self.cal_shear_velocity_sum(self.V, self.W)
 
     def add_random_noise(self, noise_scale, overwrite=False):
         if overwrite:
@@ -175,18 +175,17 @@ class NSControl:
             relative_dpdx = mean_pg / self.dpdx_init
             return relative_dpdx
     
-    def cal_shear_velocity(self, V, W):
-        # top_v = V[:, -1, :]
-        # top_w = W[:, -1, :]
-        # mean_shear_velocity = np.sum(top_v**2 + top_w**2)
-        
+    def cal_shear_velocity_sum(self, V, W):
         mean_shear_velocity = np.sum(V**2)
         if self.shear_init is None:
             return mean_shear_velocity
         else:
             relative_vel = mean_shear_velocity / self.shear_init
             return relative_vel
-
+        
+    def cal_bulk_velocity_mean(self, U, sample_index=10):
+        return U[:, -sample_index:, :].mean()
+        
     def reward_div(self, bound=-100):
         reward = - abs(np.sum(self.cal_div()))
         if reward < bound:
@@ -250,10 +249,11 @@ class NSControl:
     
     def rand_control(self, P):
         opV2 = self.eng.compute_opposition(to_m(P))
-        return np.array(opV2)
+        opV2 = np.array(opV2)
+        return opV2
     
-    def gt_control(self, plane_index=-10):
-        top_speed = self.V[:, -plane_index, :]
+    def gt_control(self, plane_index=1):
+        top_speed = self.V[:, plane_index, :]
         opV2 = top_speed
         return np.array(opV2)
     
@@ -272,11 +272,14 @@ class NSControl:
         pressure_top = self.get_state()
         div = self.reward_div()
         pressure_gradient = self.cal_pressure_gradient(pressure_top)
-        shear_velocity = self.cal_shear_velocity(self.V, self.W)
+        shear_velocity = self.cal_shear_velocity_sum(self.V, self.W)
+        bulk_velocity = self.cal_bulk_velocity_mean(self.U)
+        pressure_mean = pressure_top.mean()
         gt_diff = self.reward_gt()
         speed_diff = self.reward_td(prev_U, prev_V, prev_W)
         speed_norm = self.speed_norm()
         done = False
         info = {'dPdx': pressure_gradient, '|u_tau|^2': shear_velocity, '-|divergence|': div, 
-                '-|now - unnoised| ÷ ｜now|': gt_diff, '-|now - prev| ÷ |now|': speed_diff, 'speed_norm': speed_norm} 
+                '-|now - unnoised| ÷ ｜now|': gt_diff, '-|now - prev| ÷ |now|': speed_diff, 'speed_norm': speed_norm,
+                'bulk_velocity_mean': bulk_velocity, 'pressure_mean': pressure_mean} 
         return pressure_top, div, done, info

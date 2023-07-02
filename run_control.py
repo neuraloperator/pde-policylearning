@@ -92,7 +92,7 @@ def main(args):
             opV2 = demo_dataset.p_norm.decode(opV2.cpu())
             opV2 = opV2.detach().numpy().squeeze()
         elif args.policy_name == 'gt':
-            opV2 = control_env.gt_control()
+            opV2 = control_env.gt_control(plane_index=-2)
         else:
             raise RuntimeError("Not supported policy name.")
         if control_env.reward_div() < -10:

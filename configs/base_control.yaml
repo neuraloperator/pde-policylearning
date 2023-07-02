@@ -1,6 +1,6 @@
 project_name: control_v2
 load_model_name: planes_channel180_minchan_31-FNO-reproduce.pth
-comments: 4-rewrite utau
+comments: 5-no apply bc
 display_variables:
   - comments
   - policy_name
@@ -14,15 +14,15 @@ use_v_plane: false
 modes: 12
 width: 32
 vis_sample_img: false
-timestep: 500
+timestep: 1000
 noise_scale: 0.0
 use_spectral_conv: false
 downsample_rate: 1
 x_range: 32
 y_range: 32
-policy_name: fno
+# policy_name: fno
 # policy_name: rand
-# policy_name: gt
+policy_name: gt
 rand_scale: 1   # this is for rand policy
 reward_type: mse
 
