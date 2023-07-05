@@ -23,13 +23,16 @@ def main(args):
     '''
     Policy settings.
     '''
-    if args.policy_name == 'fno':
+    if args.policy_name == 'fno' or args.policy_name == 'rno':
         print("Loading model.")
         model = torch.load(os.path.join(args.output_dir, args.load_model_name)).cuda()
         print("Model loaded!")
     elif args.policy_name == 'rand':
         args.display_variables.append('rand_scale')
-
+    
+    if args.policy_name != 'gt':
+        args.collect_data = False
+    
     config_dict = {
         "task info": "p-plane-to-v",
         "model_name": args.model_name,
@@ -65,27 +68,35 @@ def main(args):
             name=exp_name,
             config=config_dict)
 
-    ################################################################
-    # create env
-    ################################################################
+    '''
+    Create env.
+    '''
     print("Initialization env...")
     control_env = NSControl(timestep=args.timestep, noise_scale=args.noise_scale, state_path_name=args.state_path_name,
                             detect_plane=args.detect_plane, test_plane=args.test_plane, w_weight=args.w_weight)
-    print("Load model ...")
+    print("Environment is initialized!")
+    
+    '''
+    Setup data.
+    '''
+    if args.collect_data:
+        collect_data_folder = os.path.join(args.output_dir, args.comments)
+        os.makedirs(collect_data_folder, exist_ok=True)
+    else:
+        collect_data_folder = None
+        
+    demo_dataset = PDEDataset(args, args.DATA_FOLDER, [1, 2, 3, 4, 5], args.downsample_rate, args.x_range, 
+                              args.y_range, use_patch=False)
 
-    ################################################################
-    # create dataset
-    ################################################################
-    demo_dataset = PDEDataset(args, args.DATA_FOLDER, [1, 2, 3, 4, 5], args.downsample_rate, args.x_range, args.y_range, use_patch=False)
-
-    ################################################################
-    # main control loop
-    ################################################################
-    pressure_v, opV2_v, top_view_v, front_view_v, side_view_v = [], [], [], [], []
+    '''
+    Main control loop.
+    '''
+    pressure_v, opV2_v, top_view_v, front_view_v, side_view_v, all_p, all_v = [], [], [], [], [], [], []
+    metadata = {}
     for i in tqdm(range(args.timestep)):
         # pressure: [32, 32], opV2: [32, 32]
-        side_pressure = control_env.get_state()
-        side_pressure = torch.tensor(side_pressure)
+        env_side_pressure = control_env.get_state()
+        side_pressure = torch.tensor(env_side_pressure)
         side_pressure = demo_dataset.p_norm.encode(side_pressure).cuda()
         side_pressure = side_pressure.reshape(-1, args.x_range, args.y_range, 1).float()
         if args.policy_name == 'rand':
@@ -95,14 +106,37 @@ def main(args):
             opV2 = model(side_pressure, None).reshape(-1, args.x_range, args.y_range)
             opV2 = demo_dataset.p_norm.decode(opV2.cpu())
             opV2 = opV2.detach().numpy().squeeze()
+        elif args.policy_name == 'rno':
+            side_pressure = side_pressure.reshape(-1, 1, args.x_range, args.y_range, 1)
+            opV2 = model(side_pressure, None).squeeze()
+            opV2 = demo_dataset.p_norm.decode(opV2.cpu())
+            opV2 = opV2.detach().numpy().squeeze()
         elif args.policy_name == 'gt':
             opV2 = control_env.gt_control()
         elif args.policy_name == 'unmanipulated':
             opV2 = None
         else:
             raise RuntimeError("Not supported policy name.")
-        if control_env.reward_div() < -10:
-            import pdb; pdb.set_trace()
+        # collect data when needed
+        if args.collect_data:
+            idx_str = str(i).zfill(6)
+            env_side_pressure = env_side_pressure.astype(np.float64)
+            opV2 = opV2.astype(np.float64)
+            field_name = 'P_planes'
+            np.save(os.path.join(collect_data_folder, f'{field_name}_{idx_str}.npy'), env_side_pressure)
+            all_p.append(env_side_pressure)
+            metadata[field_name] = {}
+            metadata[field_name]['mean'] = np.array(all_p).mean(0)
+            metadata[field_name]['std'] = np.array(all_p).std(0)
+            field_name = 'V_planes'
+            np.save(os.path.join(collect_data_folder, f'{field_name}_{idx_str}.npy'), opV2)
+            all_v.append(opV2)
+            metadata[field_name] = {}
+            metadata[field_name]['mean'] = np.array(all_v).mean(0)
+            metadata[field_name]['std'] = np.array(all_v).std(0)
+            np.save(os.path.join(collect_data_folder, f'metadata.npy'), metadata)
+        if control_env.reward_div() < -10:  # something is wrong
+            raise RuntimeError("Control is blooming!")
         side_pressure, reward, done, info = control_env.step(opV2)
         if not args.close_wandb:
             wandb.log(info)
@@ -119,7 +153,9 @@ def main(args):
             control_env.dump_state(save_path=os.path.join('outputs', f'flow_{i}.npy'))
         print(f"timestep: {i}, results: {info}.")
 
-    # save visualization results
+    '''
+    Save visualization results.
+    '''
     exp_dir = os.path.join(args.output_dir, exp_name)
     os.makedirs(exp_dir, exist_ok=True)
     print(f"Saving results to folder {exp_dir}.")

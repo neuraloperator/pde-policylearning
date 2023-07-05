@@ -43,7 +43,6 @@ def main(args, sample_data=False, train_shuffle=True):
         dataset_fn = PDEDataset
     train_dataset = dataset_fn(args, args.DATA_FOLDER, training_idx, args.downsample_rate, args.x_range, args.y_range, use_patch=args.use_patch)
     test_dataset = dataset_fn(args, args.DATA_FOLDER, testing_idx, args.downsample_rate, args.x_range, args.y_range, use_patch=args.use_patch)
-
     if sample_data:
         p_plane, v_plane = train_dataset[0]
         p_plane, v_plane = p_plane.cuda(), v_plane.cuda()
@@ -51,8 +50,8 @@ def main(args, sample_data=False, train_shuffle=True):
         v_plane_decoded = train_dataset.v_norm.cuda_decode(v_plane)
         np.savetxt('outputs/v_plane_decoded.txt', v_plane_decoded.cpu().numpy())
 
-    train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=args.batch_size, shuffle=train_shuffle, drop_last=True)
-    test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=args.batch_size, shuffle=False, drop_last=True)
+    train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=args.batch_size, shuffle=train_shuffle, drop_last=False)
+    test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=args.batch_size, shuffle=False, drop_last=False)
     n_steps_per_epoch = math.ceil(len(train_loader.dataset) / args.batch_size)
 
     ################################################################
@@ -65,7 +64,6 @@ def main(args, sample_data=False, train_shuffle=True):
     elif args.model_name == 'RNO2dObserverOld':
         model = RNO2dObserver(args.modes, args.modes, args.width, recurrent_index=args.recurrent_index, layer_num=args.layer_num).cuda()
     elif args.model_name == 'UNet':
-        use_spectral_conv = False
         model = UNet(use_spectral_conv=args.use_spectral_conv).cuda()
     elif args.model_name == 'Transformer2D':
         model = SimpleTransformer(**args.model).cuda()
@@ -113,7 +111,7 @@ def main(args, sample_data=False, train_shuffle=True):
         t1 = default_timer()
         train_l2, train_num = 0, 0
         for step, (p_plane, v_plane) in enumerate(tqdm(train_loader)):
-            p_plane, v_plane = p_plane.cuda(), v_plane.cuda()
+            p_plane, v_plane = p_plane.cuda().float(), v_plane.cuda().float()
             if args.recurrent_model:
                 p_plane = p_plane.reshape(-1, args.timestep, args.x_range, args.y_range, 1)
                 v_plane = v_plane.reshape(-1, args.timestep, args.x_range, args.y_range, 1)
@@ -126,6 +124,7 @@ def main(args, sample_data=False, train_shuffle=True):
                 v_plane = v_plane.reshape(-1, args.x_range, args.y_range, 1)
             train_num += len(v_plane)
             optimizer.zero_grad()
+            import pdb; pdb.set_trace()
             out = model(p_plane, v_plane)
             out = out.reshape(-1, args.x_range, args.y_range)
             out_decoded = train_dataset.v_norm.cuda_decode(out)
@@ -146,7 +145,7 @@ def main(args, sample_data=False, train_shuffle=True):
         test_l2, test_num = 0.0, 0
         with torch.no_grad():
             for p_plane, v_plane in test_loader:
-                p_plane, v_plane = p_plane.cuda(), v_plane.cuda()
+                p_plane, v_plane = p_plane.cuda().float(), v_plane.cuda().float()
                 if args.recurrent_model:
                     p_plane = p_plane.reshape(-1, args.timestep, args.x_range, args.y_range, 1)
                     v_plane = v_plane.reshape(-1, args.timestep, args.x_range, args.y_range, 1)
@@ -183,7 +182,9 @@ def main(args, sample_data=False, train_shuffle=True):
             dat = {'x': p_plane_decoded.cpu().numpy(), 'pred': out_decoded.cpu().numpy(), 'y': v_plane_decoded.cpu().numpy(),}
             if not args.close_wandb:
                 vis_diagram(dat)
-                torch.save(model, f"./outputs/{args.path_name}_{args.exp_name}.pth")
+            model_save_p = f"./outputs/{args.path_name}_{args.exp_name}.pth"
+            torch.save(model, model_save_p)
+            print(f"Best model saved at {model_save_p}!")
         print(f"epoch: {ep}, time passed: {t2-t1}, train loss: {train_l2}, test loss: {test_l2}, best loss: {best_loss}.")
         avg_metrics = {"train/avg_train_loss": train_l2,
                     "test/avg_test_loss": test_l2,

@@ -22,9 +22,9 @@ class PDEDataset(Dataset):
         self.p_plane_files = sorted([onef for onef in self.file_list if p_plane_name in onef])
         self.v_plane_files = sorted([onef for onef in self.file_list if v_plane_name in onef])
         self.p_plane_mean, self.p_plane_std = self.metadata[p_plane_name]['mean'], self.metadata[p_plane_name]['std']
-        self.p_plane_max, self.p_plane_min = self.metadata[p_plane_name]['max'], self.metadata[p_plane_name]['min']
+        # self.p_plane_max, self.p_plane_min = self.metadata[p_plane_name]['max'], self.metadata[p_plane_name]['min']
         self.v_plane_mean, self.v_plane_std = self.metadata[v_plane_name]['mean'], self.metadata[v_plane_name]['std']
-        self.v_plane_max, self.v_plane_min = self.metadata[v_plane_name]['max'], self.metadata[v_plane_name]['min']
+        # self.v_plane_max, self.v_plane_min = self.metadata[v_plane_name]['max'], self.metadata[v_plane_name]['min']
         self.data_index = data_index
         self.data_length = len(self.data_index)
         self.use_patch = use_patch
@@ -89,9 +89,9 @@ class SequentialPDEDataset(Dataset):
         self.p_plane_files = sorted([onef for onef in self.file_list if p_plane_name in onef])
         self.v_plane_files = sorted([onef for onef in self.file_list if v_plane_name in onef])
         self.p_plane_mean, self.p_plane_std = self.metadata[p_plane_name]['mean'], self.metadata[p_plane_name]['std']
-        self.p_plane_max, self.p_plane_min = self.metadata[p_plane_name]['max'], self.metadata[p_plane_name]['min']
+        # self.p_plane_max, self.p_plane_min = self.metadata[p_plane_name]['max'], self.metadata[p_plane_name]['min']
         self.v_plane_mean, self.v_plane_std = self.metadata[v_plane_name]['mean'], self.metadata[v_plane_name]['std']
-        self.v_plane_max, self.v_plane_min = self.metadata[v_plane_name]['max'], self.metadata[v_plane_name]['min']
+        # self.v_plane_max, self.v_plane_min = self.metadata[v_plane_name]['max'], self.metadata[v_plane_name]['min']
         self.data_index = data_index
         self.data_length = len(self.data_index)
         self.use_patch = use_patch

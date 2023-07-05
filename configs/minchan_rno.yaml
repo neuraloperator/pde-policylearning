@@ -1,6 +1,7 @@
-DATA_FOLDER: './outputs/9-close W'
-ntrain: 180
-ntest: 20
+# minchan dataset
+DATA_FOLDER: './data/planes_channel180_minchan'
+ntrain: 8000
+ntest: 2000
 project_name: 'fno_vs_unet'
 exp_name: '28-RNO-reproduce'
 path_name: planes_channel180_minchan
@@ -16,14 +17,14 @@ x_range: 32
 y_range: 32
 use_v_plane: false
 use_patch: false
-timestep: 1
+timestep: 2
 recurrent_model: true
 recurrent_index: 0
 random_split: false
 
 # small model
 width: 34  # 32 by default
-batch_size: 16
+batch_size: 32
 layer_num: 3
 close_wandb: true
 epochs: 200
