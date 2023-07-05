@@ -48,7 +48,10 @@ def main(args):
         "reward_type": args.reward_type,
         'noise_scale': args.noise_scale,
         "timestep": args.timestep,
-        "comments": args.comments}
+        "comments": args.comments,
+        "state_path_name": args.state_path_name, 
+        "detect_plane": args.detect_plane,
+        "test_plane": args.test_plane}
 
     exp_name = ""
     for one_v in args.display_variables:
@@ -66,7 +69,8 @@ def main(args):
     # create env
     ################################################################
     print("Initialization env...")
-    control_env = NSControl(timestep=args.timestep, noise_scale=args.noise_scale)
+    control_env = NSControl(timestep=args.timestep, noise_scale=args.noise_scale, state_path_name=args.state_path_name,
+                            detect_plane=args.detect_plane, test_plane=args.test_plane, w_weight=args.w_weight)
     print("Load model ...")
 
     ################################################################
@@ -92,7 +96,9 @@ def main(args):
             opV2 = demo_dataset.p_norm.decode(opV2.cpu())
             opV2 = opV2.detach().numpy().squeeze()
         elif args.policy_name == 'gt':
-            opV2 = control_env.gt_control(plane_index=-2)
+            opV2 = control_env.gt_control()
+        elif args.policy_name == 'unmanipulated':
+            opV2 = None
         else:
             raise RuntimeError("Not supported policy name.")
         if control_env.reward_div() < -10:
@@ -109,7 +115,9 @@ def main(args):
             cur_pressure_image = matrix2image(side_pressure, extend_value=1e-2)
             opV2_v.append(cur_opV2_image)
             pressure_v.append(cur_pressure_image)
-        print(f"timestep: {i}, scores: {info}")
+        if i % 100 == 0:
+            control_env.dump_state(save_path=os.path.join('outputs', f'flow_{i}.npy'))
+        print(f"timestep: {i}, results: {info}.")
 
     # save visualization results
     exp_dir = os.path.join(args.output_dir, exp_name)

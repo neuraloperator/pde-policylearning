@@ -31,44 +31,19 @@ def relative_loss(A, B):
 
 
 class NSControl:
-    def __init__(self, timestep, noise_scale):
+    def __init__(self, timestep, noise_scale, state_path_name, detect_plane, test_plane, w_weight):
+        self.timestep = timestep
+        self.detect_plane = detect_plane
+        self.test_plane = test_plane
+        self.w_weight = w_weight
         print("Lauching matlab...")
         self.eng = matlab.engine.start_matlab()
         print("Lauching finished!")
         self.eng.addpath("./libs/matlab_codes")
-        
-        # Initialize with saved field
-        init_minchan_path = './data/channel180_minchan.mat'
-
-        # Load the .mat file
-        mat_data = scipy.io.loadmat(init_minchan_path)
-       
-        # Access the fields
-        self.x = mat_data['x']
-        self.y = mat_data['y']
-        self.z = mat_data['z']
-        self.xm = mat_data['xm']
-        self.ym = mat_data['ym']
-        self.zm = mat_data['zm']
-        self.UU = mat_data['UU']
-        self.VV = mat_data['VV']
-        self.WW = mat_data['WW']  # BS, W, H
-
-        # Global variables
-        self.nu = 1 / 0.32500000E+04  # kinematic viscosity
-        self.dPdx = 0.57231059E-01**2  # pressure gradient (utau^2)
-        self.Nt = timestep  # number of time steps
-        self.dt = 0.001  # time step
-        self.dx = self.x[1] - self.x[0]
-        self.dz = self.z[1] - self.z[0]
-        self.yg = np.concatenate(([-self.ym[0]], self.ym, [2 + self.ym[0]]))
-        self.Nx = len(self.x) - 2
-        self.Nz = len(self.z) - 2
-        self.Ny = len(self.y)
-
-        self.U = self.UU[0:self.Nx, :, 1:self.Nz+1]
-        self.V = self.VV[1:self.Nx+1, :, 1:self.Nz+1]
-        self.W = self.WW[1:self.Nx+1, :, 0:self.Nz]
+        self.load_state(load_path=state_path_name)
+        save_path = './outputs/stable_flow.npy'
+        self.dump_state(save_path=save_path)
+        self.load_state(load_path=save_path)
         self.U_gt = self.U.copy()
         self.V_gt = self.V.copy()
         self.W_gt = self.W.copy()
@@ -118,7 +93,7 @@ class NSControl:
         self.p_max = min(init_p.max(), 1.5)
         self.dpdx_init, self.shear_init = None, None  # reset the dpdx and shear
         self.dpdx_init = self.cal_pressure_gradient(self.get_state())
-        self.shear_init = self.cal_shear_velocity_sum(self.V, self.W)
+        self.shear_init = self.cal_norm_velocity_sum(self.V, self.W, plane_index=self.test_plane)
 
     def add_random_noise(self, noise_scale, overwrite=False):
         if overwrite:
@@ -131,6 +106,59 @@ class NSControl:
             self.W += np.random.normal(scale=noise_scale, size=self.W.shape)
         return
     
+    '''
+    Save and load state.
+    '''
+    
+    def dump_state(self, save_path):
+        mat_data = {
+            'x': np.array(self.x),
+            'y': np.array(self.y),
+            'z': np.array(self.z),
+            'xm': np.array(self.xm),
+            'ym': np.array(self.ym),
+            'zm': np.array(self.zm),
+            'U': np.array(self.U),
+            'V': np.array(self.V),
+            'W': np.array(self.W),
+        }
+        scipy.io.savemat(save_path, mat_data)
+        return
+    
+    def load_state(self, load_path='./data/channel180_minchan.mat'):
+        # Load the .mat file
+        mat_data = scipy.io.loadmat(load_path)
+        # Access the fields
+        self.x = mat_data['x']
+        self.y = mat_data['y']
+        self.z = mat_data['z']
+        self.xm = mat_data['xm']
+        self.ym = mat_data['ym']
+        self.zm = mat_data['zm']
+        
+        # Global variables
+        self.nu = 1 / 0.32500000E+04  # kinematic viscosity
+        self.dPdx = 0.57231059E-01**2  # pressure gradient (utau^2)
+        self.dt = 0.001  # time step
+        self.dx = self.x[1] - self.x[0]
+        self.dz = self.z[1] - self.z[0]
+        self.yg = np.concatenate(([-self.ym[0]], self.ym, [2 + self.ym[0]]))
+        self.Nx = len(self.x) - 2
+        self.Nz = len(self.z) - 2
+        self.Ny = len(self.y)
+
+        if 'UU' in mat_data:
+            UU = mat_data['UU']
+            VV = mat_data['VV']
+            WW = mat_data['WW']  # BS, W, H
+            self.U = UU[0:self.Nx, :, 1:self.Nz+1]
+            self.V = VV[1:self.Nx+1, :, 1:self.Nz+1]
+            self.W = WW[1:self.Nx+1, :, 0:self.Nz]
+        else:
+            self.U = mat_data['U']
+            self.V = mat_data['V']
+            self.W = mat_data['W']
+        
     '''
     Calculating scores.
     '''
@@ -164,9 +192,8 @@ class NSControl:
     def cal_pressure_gradient(self, pressure_top):
         grad_total, num = 0, 0
         for select_index in range(pressure_top.shape[0] - 1):
-            pressure_gradient = (np.mean(pressure_top[select_index + 1, :]) - 
-                                 np.mean(pressure_top[select_index, :])) / self.dx[0]
-            grad_total += pressure_gradient
+            pressure_gradient = (pressure_top[select_index + 1, :] - pressure_top[select_index, :]) / self.dx[0]
+            grad_total += abs(pressure_gradient).mean()
             num += 1
         mean_pg = abs(grad_total / num)
         if self.dpdx_init is None:
@@ -175,17 +202,25 @@ class NSControl:
             relative_dpdx = mean_pg / self.dpdx_init
             return relative_dpdx
     
-    def cal_shear_velocity_sum(self, V, W):
-        mean_shear_velocity = np.sum(V**2)
+    def cal_norm_velocity_sum(self, V, W, plane_index=-20):
+        # mean_shear_velocity = np.sum(V**2)
+        mean_shear_velocity = self.cal_norm_velocity_plane_sum(plane_index=plane_index)
         if self.shear_init is None:
             return mean_shear_velocity
         else:
             relative_vel = mean_shear_velocity / self.shear_init
             return relative_vel
+    
+    def cal_norm_velocity_plane_sum(self, plane_index):
+        return_v_p = np.sum(self.V[:, plane_index, :]**2)
+        return return_v_p
         
     def cal_bulk_velocity_mean(self, U, sample_index=10):
         return U[:, -sample_index:, :].mean()
-        
+ 
+    def cal_speed_norm(self, ):
+        return np.linalg.norm(self.V) + np.linalg.norm(self.U) + np.linalg.norm(self.W)
+       
     def reward_div(self, bound=-100):
         reward = - abs(np.sum(self.cal_div()))
         if reward < bound:
@@ -220,13 +255,14 @@ class NSControl:
         cut_dim = self.U.shape[0]
         # get front view
         mid_index = pressure.shape[2] // sample_slice_others
-        front_pressure = pressure[:, :cut_dim, mid_index].transpose()
-        u_in_xy = self.U[:, :cut_dim, mid_index].transpose() / 10000
-        v_in_xy = self.V[:, :cut_dim, mid_index].transpose()
+        front_pressure = pressure[:, -cut_dim:, mid_index].transpose()
+        u_in_xy = self.U[:, -cut_dim:, mid_index].transpose() / 10000
+        v_in_xy = self.V[:, -cut_dim:, mid_index].transpose()
         front_view = visualize_pressure_speed(front_pressure, pressure_min=-0.01, pressure_max=0.01, \
-            speed_horizontal=u_in_xy, speed_vertical=v_in_xy, vis_img=vis_img, vis_name='front', quiver_scale=0.01, \
-            x_sample_interval=2, y_sample_interval=2)
+            speed_horizontal=u_in_xy, speed_vertical=v_in_xy, vis_img=vis_img, vis_name='front', quiver_scale=0.03, \
+            x_sample_interval=2, y_sample_interval=2, v_flip=False)
 
+        # TODO: check top view and side view visualizations' order
         # get top view
         mid_index = pressure.shape[1] // sample_slice_top
         top_pressure = np.squeeze(-0.5 * (pressure[:, -1, :] + pressure[:, -2, :]))
@@ -247,37 +283,64 @@ class NSControl:
             import pdb; pdb.set_trace()
         return top_view, front_view, side_view
     
+    '''
+    Control policies.
+    '''
+    
     def rand_control(self, P):
         opV2 = self.eng.compute_opposition(to_m(P))
         opV2 = np.array(opV2)
         return opV2
     
-    def gt_control(self, plane_index=1):
-        top_speed = self.V[:, plane_index, :]
-        opV2 = top_speed
+    def gt_control(self):
+        opV2 = self.V[:, self.detect_plane, :]
         return np.array(opV2)
-    
-    def speed_norm(self, ):
-        return np.linalg.norm(self.V)
 
+    def apply_bc(self, opV2):
+        if opV2 is None:
+            return
+        opV2 = - opV2 # apply opposition here
+        opV2 = opV2 - np.mean(opV2)
+        opV1 = opV2 * 0
+        # Applying boundary conditions for U
+        self.U[:, 0, :] = self.U[:, -1, :]
+
+        # # Applying boundary conditions for V
+        # self.V[:, 0, :] = opV1
+        self.V[:, -1, :] = opV2
+
+        self.W *= self.w_weight
+        
+        # Applying boundary conditions for W
+        # self.W[:, 0, :] = self.W[:, -1, :]
+        # U, V, W = self.eng.apply_boundary_condition(to_m(self.U), to_m(self.V), to_m(self.W), 
+                                                    # -0*opV1, to_m(opV2), nargout=3)
+        # self.U, self.V, self.W = np.array(U), np.array(V), np.array(W)
+
+    def step_rk3(self):
+        U, V, W = self.eng.time_advance_RK3(to_m(self.U), to_m(self.V), to_m(self.W), to_m(self.nu), to_m(self.dPdx), \
+        to_m(self.y), to_m(self.ym), to_m(self.yg), to_m(self.dx), to_m(self.dz), to_m(self.dt), to_m(self.kxx), to_m(self.kzz), \
+            to_m(self.Nx), to_m(self.Ny), to_m(self.Nz), to_m(self.DD), nargout=3)
+        self.U, self.V, self.W = np.array(U), np.array(V), np.array(W)
+        
     def step(self, opV2):
         # Perform one step in the environment
         # Update state, calculate reward, check termination condition, etc.
         # Return the next state, reward, termination flag, and additional info
         prev_U, prev_V, prev_W = self.U.copy(), self.V.copy(), self.W.copy()
-        U, V, W = self.eng.time_advance_RK3(to_m(opV2), to_m(self.U), to_m(self.V), to_m(self.W), to_m(self.nu), to_m(self.dPdx), \
-        to_m(self.y), to_m(self.ym), to_m(self.yg), to_m(self.dx), to_m(self.dz), to_m(self.dt), to_m(self.kxx), to_m(self.kzz), \
-            to_m(self.Nx), to_m(self.Ny), to_m(self.Nz), to_m(self.DD), nargout=3)
-        self.U, self.V, self.W = np.array(U), np.array(V), np.array(W)
+        before_norm = self.cal_norm_velocity_plane_sum(plane_index=self.test_plane)
+        self.apply_bc(opV2)
+        self.step_rk3()
+        after_norm_step1 = self.cal_norm_velocity_plane_sum(plane_index=self.test_plane)
         pressure_top = self.get_state()
         div = self.reward_div()
         pressure_gradient = self.cal_pressure_gradient(pressure_top)
-        shear_velocity = self.cal_shear_velocity_sum(self.V, self.W)
+        shear_velocity = self.cal_norm_velocity_sum(self.V, self.W, plane_index=self.test_plane)
         bulk_velocity = self.cal_bulk_velocity_mean(self.U)
         pressure_mean = pressure_top.mean()
         gt_diff = self.reward_gt()
         speed_diff = self.reward_td(prev_U, prev_V, prev_W)
-        speed_norm = self.speed_norm()
+        speed_norm = self.cal_speed_norm()
         done = False
         info = {'dPdx': pressure_gradient, '|u_tau|^2': shear_velocity, '-|divergence|': div, 
                 '-|now - unnoised| ÷ ｜now|': gt_diff, '-|now - prev| ÷ |now|': speed_diff, 'speed_norm': speed_norm,
