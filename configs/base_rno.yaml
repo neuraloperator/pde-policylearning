@@ -1,10 +1,38 @@
 DATA_FOLDER: './outputs/9-close W'
 ntrain: 180
 ntest: 20
-project_name: 'fno_vs_unet'
-exp_name: '28-RNO-reproduce'
+project_name: 'control_v2'
+exp_name: '33-fix-rate'
 path_name: planes_channel180_minchan
-model_name: RNO2dObserverOld
+model_name: RNO2dObserver
+display_variables:
+  - exp_name
+  - policy_name
+  - control_timestep
+  - model_timestep
+
+# control setups
+# state_path_name: ./data/channel180_minchan.mat  # original
+state_path_name: ./outputs/flow_900.npy
+vis_sample_img: false
+noise_scale: 0.0
+detect_plane: -10  # get velocity from detect plane
+test_plane: -25
+w_weight: 0.8
+
+# policy setups
+# policy_name: rno
+# policy_name: fno
+# policy_name: rand
+policy_name: unmanipulated
+# policy_name: gt
+rand_scale: 100
+reward_type: mse
+collect_data: true  # collect dataset
+dump_state: false  # used to produce different initialization conditions
+
+# learning settings
+use_spectral_conv: false
 learning_rate: 0.001
 weight_decay: 0.0001
 step_size: 100
@@ -16,17 +44,23 @@ x_range: 32
 y_range: 32
 use_v_plane: false
 use_patch: false
-timestep: 1
+model_timestep: 1
 recurrent_model: true
 recurrent_index: 0
 random_split: false
 
+# visualization settings
+vis_frame: 60
+vis_interval: 1000  # default, will be overwritten.
+output_dir: ./outputs
+
 # small model
 width: 34  # 32 by default
-batch_size: 16
-layer_num: 3
-close_wandb: true
+batch_size: 32
+layer_num: 1
+close_wandb: false
 epochs: 200
+control_timestep: 100
 
 # # large model
 # batch_size: 32  # 20
@@ -34,3 +68,4 @@ epochs: 200
 # layer_num: 10
 # close_wandb: false
 # epochs: 200
+# control_timestep: 100

@@ -20,17 +20,24 @@ from libs.arguments import *
 from libs.metrics import *
 from tqdm import tqdm
 from torch.optim import Adam
-
+from run_control import main as control
 
 torch.manual_seed(0)
 np.random.seed(0)
 
 
 def main(args, sample_data=False, train_shuffle=True):
+    if args.policy_name in ['unmanipulated', 'gt', 'rand']:
+        args.control_only = True
+    else:
+        args.control_only = False
+    if args.control_only:
+        control(args, model=None, wandb_exist=False)
+        return
     args.using_transformer = 'Transformer' in args.model_name
-    assert args.model_name in ['UNet', 'RNO2dObserverOld', 'FNO2dObserverOld', 'FNO2dObserver', 'Transformer2D'],  "Model not supported!"
+    assert args.model_name in ['UNet', 'RNO2dObserver', 'FNO2dObserverOld', 'FNO2dObserver', 'Transformer2D'],  "Model not supported!"
     if not args.close_wandb:
-        wandb.login()
+        wandb.login(key='05f0a1690d6802d6714bfe7d8aea302e690f7c27')
     if args.random_split:
         idx = torch.randperm(args.ntrain + args.ntest)
     else:
@@ -61,7 +68,7 @@ def main(args, sample_data=False, train_shuffle=True):
         model = FNO2dObserverOld(args.modes, args.modes, args.width, use_v_plane=args.use_v_plane).cuda()
     elif args.model_name == 'FNO2dObserver':
         model = FNO2dObserver(args.modes, args.modes, args.width, use_v_plane=args.use_v_plane).cuda()
-    elif args.model_name == 'RNO2dObserverOld':
+    elif args.model_name == 'RNO2dObserver':
         model = RNO2dObserver(args.modes, args.modes, args.width, recurrent_index=args.recurrent_index, layer_num=args.layer_num).cuda()
     elif args.model_name == 'UNet':
         model = UNet(use_spectral_conv=args.use_spectral_conv).cuda()
@@ -113,18 +120,17 @@ def main(args, sample_data=False, train_shuffle=True):
         for step, (p_plane, v_plane) in enumerate(tqdm(train_loader)):
             p_plane, v_plane = p_plane.cuda().float(), v_plane.cuda().float()
             if args.recurrent_model:
-                p_plane = p_plane.reshape(-1, args.timestep, args.x_range, args.y_range, 1)
-                v_plane = v_plane.reshape(-1, args.timestep, args.x_range, args.y_range, 1)
+                p_plane = p_plane.reshape(-1, args.model_timestep, args.x_range, args.y_range, 1)
+                v_plane = v_plane.reshape(-1, args.model_timestep, args.x_range, args.y_range, 1)
                 v_plane = v_plane[:, args.recurrent_index, :, :, :]  # select the predict element
                 args.batch_size = v_plane.shape[0]
             elif args.using_transformer:
-                p_plane = p_plane.reshape(-1, args.timestep, args.x_range, args.y_range, 1)
+                p_plane = p_plane.reshape(-1, args.model_timestep, args.x_range, args.y_range, 1)
             else:
                 p_plane = p_plane.reshape(-1, args.x_range, args.y_range, 1)
                 v_plane = v_plane.reshape(-1, args.x_range, args.y_range, 1)
             train_num += len(v_plane)
             optimizer.zero_grad()
-            import pdb; pdb.set_trace()
             out = model(p_plane, v_plane)
             out = out.reshape(-1, args.x_range, args.y_range)
             out_decoded = train_dataset.v_norm.cuda_decode(out)
@@ -147,12 +153,12 @@ def main(args, sample_data=False, train_shuffle=True):
             for p_plane, v_plane in test_loader:
                 p_plane, v_plane = p_plane.cuda().float(), v_plane.cuda().float()
                 if args.recurrent_model:
-                    p_plane = p_plane.reshape(-1, args.timestep, args.x_range, args.y_range, 1)
-                    v_plane = v_plane.reshape(-1, args.timestep, args.x_range, args.y_range, 1)
+                    p_plane = p_plane.reshape(-1, args.model_timestep, args.x_range, args.y_range, 1)
+                    v_plane = v_plane.reshape(-1, args.model_timestep, args.x_range, args.y_range, 1)
                     v_plane = v_plane[:, args.recurrent_index, :, :, :]
                     args.batch_size = v_plane.shape[0]
                 elif args.using_transformer:
-                    p_plane = p_plane.reshape(-1, args.timestep, args.x_range, args.y_range, 1)
+                    p_plane = p_plane.reshape(-1, args.model_timestep, args.x_range, args.y_range, 1)
                 else:
                     p_plane = p_plane.reshape(-1, args.x_range, args.y_range, 1)
                     v_plane = v_plane.reshape(-1, args.x_range, args.y_range, 1)
@@ -193,6 +199,8 @@ def main(args, sample_data=False, train_shuffle=True):
         if not args.close_wandb:
             wandb.log(avg_metrics)
             
+    print("Running control")
+    control(args, model, wandb_exist=True)
     if not args.close_wandb:
         vis_diagram(dat)
         wandb.finish()

@@ -89,4 +89,5 @@ def vis_diagram(dat):
         cbar_ax = fig.add_axes([.92, 0.15, 0.04, 0.7])
         fig.colorbar(im3, cax=cbar_ax)
         wandb.log({f"data_id_{index}": plt})
+    plt.close()
     return

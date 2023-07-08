@@ -19,14 +19,16 @@ from tqdm import tqdm
 import os
 
 
-def main(args):
+def main(args, model=None, wandb_exist=False):
     '''
     Policy settings.
     '''
+    args.vis_interval = max(args.control_timestep // args.vis_frame, 1)
     if args.policy_name == 'fno' or args.policy_name == 'rno':
-        print("Loading model.")
-        model = torch.load(os.path.join(args.output_dir, args.load_model_name)).cuda()
-        print("Model loaded!")
+        if model is None:
+            print("Loading model.")
+            model = torch.load(os.path.join(args.output_dir, args.load_model_name)).cuda()
+            print("Model loaded!")
     elif args.policy_name == 'rand':
         args.display_variables.append('rand_scale')
     
@@ -50,8 +52,9 @@ def main(args):
         "rand_scale": args.rand_scale,
         "reward_type": args.reward_type,
         'noise_scale': args.noise_scale,
-        "timestep": args.timestep,
-        "comments": args.comments,
+        "control_timestep": args.control_timestep,
+        "model_timestep": args.model_timestep,
+        "exp_name": args.exp_name,
         "state_path_name": args.state_path_name, 
         "detect_plane": args.detect_plane,
         "test_plane": args.test_plane}
@@ -62,25 +65,29 @@ def main(args):
         exp_name += str(config_dict[one_v])
         exp_name += "; "
 
-    if not args.close_wandb:
+    if not args.close_wandb and not wandb_exist:
         wandb.init(
             project=args.project_name + "_" + args.path_name,
             name=exp_name,
-            config=config_dict)
-
+            config=config_dict,
+            )
+        # define metrics
+        wandb.define_metric("control_timestep")
+        wandb.define_metric("drag_reduction/*", step_metric="control_timestep")
     '''
     Create env.
     '''
     print("Initialization env...")
-    control_env = NSControl(timestep=args.timestep, noise_scale=args.noise_scale, state_path_name=args.state_path_name,
-                            detect_plane=args.detect_plane, test_plane=args.test_plane, w_weight=args.w_weight)
+    control_env = NSControlEnv(control_timestep=args.control_timestep, noise_scale=args.noise_scale, 
+                            state_path_name=args.state_path_name, detect_plane=args.detect_plane, 
+                            test_plane=args.test_plane, w_weight=args.w_weight)
     print("Environment is initialized!")
     
     '''
     Setup data.
     '''
     if args.collect_data:
-        collect_data_folder = os.path.join(args.output_dir, args.comments)
+        collect_data_folder = os.path.join(args.output_dir, args.exp_name)
         os.makedirs(collect_data_folder, exist_ok=True)
     else:
         collect_data_folder = None
@@ -93,7 +100,7 @@ def main(args):
     '''
     pressure_v, opV2_v, top_view_v, front_view_v, side_view_v, all_p, all_v = [], [], [], [], [], [], []
     metadata = {}
-    for i in tqdm(range(args.timestep)):
+    for i in tqdm(range(args.control_timestep + 1)):
         # pressure: [32, 32], opV2: [32, 32]
         env_side_pressure = control_env.get_state()
         side_pressure = torch.tensor(env_side_pressure)
@@ -138,7 +145,8 @@ def main(args):
         if control_env.reward_div() < -10:  # something is wrong
             raise RuntimeError("Control is blooming!")
         side_pressure, reward, done, info = control_env.step(opV2)
-        if not args.close_wandb:
+        if not args.close_wandb and i > 0:
+            info['control_timestep'] = i
             wandb.log(info)
         if i % args.vis_interval == 0:
             top_view, front_view, side_view = control_env.vis_state(vis_img=args.vis_sample_img)
@@ -149,7 +157,7 @@ def main(args):
             cur_pressure_image = matrix2image(side_pressure, extend_value=1e-2)
             opV2_v.append(cur_opV2_image)
             pressure_v.append(cur_pressure_image)
-        if i % 100 == 0:
+        if i % 100 == 0 and args.dump_state:
             control_env.dump_state(save_path=os.path.join('outputs', f'flow_{i}.npy'))
         print(f"timestep: {i}, results: {info}.")
 
@@ -172,8 +180,6 @@ if __name__ == '__main__':
     args = parse_arguments()
     loaded_args = load_arguments_from_yaml(args.control_yaml)
     args = merge_args_with_yaml(args, loaded_args)
-    assert args.model_name in ['UNet', 'FNO2dObserverOld', 'FNO2dObserver'], "Model not supported!"
-    args.vis_interval = max(args.timestep // args.vis_frame, 1)
     if not args.close_wandb:
         wandb.login()
     main(args)

@@ -5,7 +5,7 @@ ntest: 2000
 project_name: 'fno_vs_unet'
 exp_name: '28-RNO-reproduce'
 path_name: planes_channel180_minchan
-model_name: RNO2dObserverOld
+model_name: RNO2dObserver
 learning_rate: 0.001
 weight_decay: 0.0001
 step_size: 100

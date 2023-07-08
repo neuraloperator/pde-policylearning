@@ -30,9 +30,9 @@ def relative_loss(A, B):
     return loss
 
 
-class NSControl:
-    def __init__(self, timestep, noise_scale, state_path_name, detect_plane, test_plane, w_weight):
-        self.timestep = timestep
+class NSControlEnv:
+    def __init__(self, control_timestep, noise_scale, state_path_name, detect_plane, test_plane, w_weight):
+        self.control_timestep = control_timestep
         self.detect_plane = detect_plane
         self.test_plane = test_plane
         self.w_weight = w_weight
@@ -81,7 +81,7 @@ class NSControl:
 
         self.add_random_noise(noise_scale)
         # make a step forward
-        self.dpdx_init, self.shear_init = None, None
+        self.dpdx_init, self.norm_v_init = None, None
         if noise_scale - 0.0 > 0.01:   # reduce the effect of noises
             self.step(self.rand_control(self.get_state()))
         print(f"Initially, the divergence is {self.reward_div()}.")
@@ -91,9 +91,7 @@ class NSControl:
         self.speed_max = max(self.U.max(), self.V.max(), self.W.max())
         self.p_min = max(-2.0, init_p.min())
         self.p_max = min(init_p.max(), 1.5)
-        self.dpdx_init, self.shear_init = None, None  # reset the dpdx and shear
-        self.dpdx_init = self.cal_pressure_gradient(self.get_state())
-        self.shear_init = self.cal_norm_velocity_sum(self.V, self.W, plane_index=self.test_plane)
+        self.dpdx_init, self.norm_v_init, self.shear_init, self.bulk_init = None, None, None, None
 
     def add_random_noise(self, noise_scale, overwrite=False):
         if overwrite:
@@ -162,7 +160,6 @@ class NSControl:
     '''
     Calculating scores.
     '''
-    
     def cal_div(self):
         div1 = np.zeros((self.Nx, self.Ny-1, self.Nz))
         uxsum, uysum, uzsum = 0, 0, 0
@@ -189,7 +186,7 @@ class NSControl:
         self.P = np.array(self.P)
         return self.P
 
-    def cal_pressure_gradient(self, pressure_top):
+    def cal_dpdx(self, pressure_top):
         grad_total, num = 0, 0
         for select_index in range(pressure_top.shape[0] - 1):
             pressure_gradient = (pressure_top[select_index + 1, :] - pressure_top[select_index, :]) / self.dx[0]
@@ -197,6 +194,7 @@ class NSControl:
             num += 1
         mean_pg = abs(grad_total / num)
         if self.dpdx_init is None:
+            self.dpdx_init = mean_pg
             return mean_pg
         else:
             relative_dpdx = mean_pg / self.dpdx_init
@@ -205,22 +203,54 @@ class NSControl:
     def cal_norm_velocity_sum(self, V, W, plane_index=-20):
         # mean_shear_velocity = np.sum(V**2)
         mean_shear_velocity = self.cal_norm_velocity_plane_sum(plane_index=plane_index)
-        if self.shear_init is None:
+        if self.norm_v_init is None:
+            self.norm_v_init = mean_shear_velocity
             return mean_shear_velocity
         else:
-            relative_vel = mean_shear_velocity / self.shear_init
+            relative_vel = mean_shear_velocity / self.norm_v_init
             return relative_vel
     
     def cal_norm_velocity_plane_sum(self, plane_index):
-        return_v_p = np.sum(self.V[:, plane_index, :]**2)
+        if plane_index <= -100: 
+            return_v_p = np.sum(self.V**2)
+        else:
+            return_v_p = np.sum(self.V[:, plane_index, :]**2)
         return return_v_p
         
-    def cal_bulk_velocity_mean(self, U, sample_index=10):
-        return U[:, -sample_index:, :].mean()
+    def cal_bulk_velocity_mean(self, sample_index=10):
+        if sample_index is not None:
+            bulk_v = self.U[:, -sample_index:, :].mean()
+        else:
+            bulk_v = self.U.mean()
+        if self.bulk_init is None:
+            self.bulk_init = bulk_v
+            return bulk_v
+        else:
+            return bulk_v / self.bulk_init
  
     def cal_speed_norm(self, ):
         return np.linalg.norm(self.V) + np.linalg.norm(self.U) + np.linalg.norm(self.W)
        
+    def cal_shear_stress(self,):
+        # -u*v + nu * (dU/dy)
+        wall_u = (self.U[:, -1, :] + self.U[:, -2, :]) / 2
+        wall_v = (self.V[:, -1, :] + self.V[:, -2, :]) / 2
+        dudy_all = []
+        for select_index in range(self.U.shape[1] - 2):
+            dudy = (self.U[:, select_index + 1, :] - self.U[:, select_index, :]) / \
+            (self.y[select_index + 1][0] - self.y[select_index][0])
+            dudy_all.append(dudy)
+        dudy = (dudy_all[-1] + dudy_all[-2]) / 2
+        shear_stress = -wall_u * wall_v + self.nu * dudy
+        shear_stress_mean = np.mean(shear_stress)
+        shear_stress_res = abs(shear_stress_mean)
+        if self.shear_init is None:
+            self.shear_init = shear_stress_res
+            return shear_stress_res
+        else:
+            return shear_stress_res / self.shear_init
+        return 
+    
     def reward_div(self, bound=-100):
         reward = - abs(np.sum(self.cal_div()))
         if reward < bound:
@@ -303,16 +333,25 @@ class NSControl:
         opV2 = opV2 - np.mean(opV2)
         opV1 = opV2 * 0
         # Applying boundary conditions for U
-        self.U[:, 0, :] = self.U[:, -1, :]
-
-        # # Applying boundary conditions for V
+        self.U[:, 0, :] = self.U[:, 1, :]
+        self.U[:, -1, :] = self.U[:, -2, :]
+        # Applying boundary conditions for V
         # self.V[:, 0, :] = opV1
         self.V[:, -1, :] = opV2
-
+        
+        # Apply boundary counditions for W
+        # v_sum_before = self.U + self.W
+        # self.W[0, :, :] = 0
+        # self.W[-1, :, :] = 0
+        # self.W[:, 0, :] = 0
+        # self.W[:, -1, :] = 0
+        # self.W[:, :, 0] = 0
+        # self.W[:, :, -1] = 0
+        # self.U = v_sum_before - self.W  # make U conserved
         self.W *= self.w_weight
         
         # Applying boundary conditions for W
-        # self.W[:, 0, :] = self.W[:, -1, :]
+        self.W[:, 0, :] = self.W[:, -1, :]
         # U, V, W = self.eng.apply_boundary_condition(to_m(self.U), to_m(self.V), to_m(self.W), 
                                                     # -0*opV1, to_m(opV2), nargout=3)
         # self.U, self.V, self.W = np.array(U), np.array(V), np.array(W)
@@ -334,15 +373,23 @@ class NSControl:
         after_norm_step1 = self.cal_norm_velocity_plane_sum(plane_index=self.test_plane)
         pressure_top = self.get_state()
         div = self.reward_div()
-        pressure_gradient = self.cal_pressure_gradient(pressure_top)
+        pressure_gradient = self.cal_dpdx(pressure_top)
         shear_velocity = self.cal_norm_velocity_sum(self.V, self.W, plane_index=self.test_plane)
-        bulk_velocity = self.cal_bulk_velocity_mean(self.U)
+        bulk_velocity = 2 - shear_velocity
+        # bulk_velocity = self.cal_bulk_velocity_mean(sample_index=None)
         pressure_mean = pressure_top.mean()
         gt_diff = self.reward_gt()
         speed_diff = self.reward_td(prev_U, prev_V, prev_W)
         speed_norm = self.cal_speed_norm()
+        shear_stress = self.cal_shear_stress()
         done = False
-        info = {'dPdx': pressure_gradient, '|u_tau|^2': shear_velocity, '-|divergence|': div, 
-                '-|now - unnoised| ÷ ｜now|': gt_diff, '-|now - prev| ÷ |now|': speed_diff, 'speed_norm': speed_norm,
-                'bulk_velocity_mean': bulk_velocity, 'pressure_mean': pressure_mean} 
+        info = {'drag_reduction/dPdx': pressure_gradient, 
+                'drag_reduction/|u_tau|^2': shear_velocity, 
+                'drag_reduction/-|divergence|': div, 
+                'drag_reduction/-|now - unnoised| ÷ ｜now|': gt_diff, 
+                'drag_reduction/-|now - prev| ÷ |now|': speed_diff, 
+                'drag_reduction/speed_norm': speed_norm,
+                'drag_reduction/mass_flow_rate': bulk_velocity, 
+                'drag_reduction/pressure_mean': pressure_mean,
+                'drag_reduction/shear_stress_rate': shear_stress}
         return pressure_top, div, done, info

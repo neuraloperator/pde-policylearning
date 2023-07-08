@@ -73,7 +73,7 @@ class SequentialPDEDataset(Dataset):
     returns [timestep, height, width, dim] with dim = 1.
     """
     def __init__(self, args, data_folder, data_index, downsample_rate, x_range, y_range, use_patch=False):
-        self.timestep = args.timestep
+        self.timestep = args.model_timestep
         self.data_folder = data_folder
         self.downsample_rate, self.x_range, self.y_range = downsample_rate, x_range, y_range
         self.metadata = np.load(os.path.join(data_folder, 'metadata.npy'), allow_pickle=True).tolist()
