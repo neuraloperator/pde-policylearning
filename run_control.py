@@ -55,9 +55,10 @@ def main(args, model=None, wandb_exist=False):
         "control_timestep": args.control_timestep,
         "model_timestep": args.model_timestep,
         "exp_name": args.exp_name,
-        "state_path_name": args.state_path_name, 
+        "init_cond_path": args.init_cond_path, 
         "detect_plane": args.detect_plane,
-        "test_plane": args.test_plane}
+        "test_plane": args.test_plane,
+        "bc_type": args.bc_type}
 
     exp_name = ""
     for one_v in args.display_variables:
@@ -66,11 +67,13 @@ def main(args, model=None, wandb_exist=False):
         exp_name += "; "
 
     if not args.close_wandb and not wandb_exist:
+        print("Init wandb!")
         wandb.init(
             project=args.project_name + "_" + args.path_name,
             name=exp_name,
             config=config_dict,
             )
+        wandb.config.update({"wandb.Table": False})  # not show the tables
         # define metrics
         wandb.define_metric("control_timestep")
         wandb.define_metric("drag_reduction/*", step_metric="control_timestep")
@@ -79,8 +82,8 @@ def main(args, model=None, wandb_exist=False):
     '''
     print("Initialization env...")
     control_env = NSControlEnv(control_timestep=args.control_timestep, noise_scale=args.noise_scale, 
-                            state_path_name=args.state_path_name, detect_plane=args.detect_plane, 
-                            test_plane=args.test_plane, w_weight=args.w_weight)
+                            init_cond_path=args.init_cond_path, detect_plane=args.detect_plane, 
+                            test_plane=args.test_plane, w_weight=args.w_weight, bc_type=args.bc_type)
     print("Environment is initialized!")
     
     '''
@@ -142,12 +145,14 @@ def main(args, model=None, wandb_exist=False):
             metadata[field_name]['mean'] = np.array(all_v).mean(0)
             metadata[field_name]['std'] = np.array(all_v).std(0)
             np.save(os.path.join(collect_data_folder, f'metadata.npy'), metadata)
-        if control_env.reward_div() < -10:  # something is wrong
-            raise RuntimeError("Control is blooming!")
+        if control_env.reward_div() < -10:
+            raise RuntimeError("Control is bloded!")
         side_pressure, reward, done, info = control_env.step(opV2)
-        if not args.close_wandb and i > 0:
+        if not args.close_wandb and i > 0:  # ignore the first iteration
             info['control_timestep'] = i
             wandb.log(info)
+            if i % args.show_spatial_dist_interval == 1:
+                control_env.plot_spatial_distribution(i)
         if i % args.vis_interval == 0:
             top_view, front_view, side_view = control_env.vis_state(vis_img=args.vis_sample_img)
             top_view_v.append(top_view)
@@ -173,6 +178,8 @@ def main(args, model=None, wandb_exist=False):
     save_images_to_video(opV2_v, os.path.join(exp_dir, exp_name + 'v_plane.mp4'), fps=15)
     save_images_to_video(pressure_v, os.path.join(exp_dir, exp_name + 'pressure.mp4'), fps=15)
     print("Program finished!")
+    if not args.close_wandb:
+        wandb.finish()
 
 
 if __name__ == '__main__':

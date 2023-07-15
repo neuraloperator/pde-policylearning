@@ -76,7 +76,7 @@ class SpectralConv2d(nn.Module):
         x = torch.fft.irfft2(out_ft, s=(n, n), norm=self.norm)
         return x
 
-
+    
 class SpectralConvWithFC(nn.Module):
     def __init__(self, in_channels, out_channels, modes1, modes2, n_grid=None, dropout=0.1, norm='ortho',
                  activation='silu', return_freq=False, debug=False):

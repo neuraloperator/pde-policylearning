@@ -27,6 +27,12 @@ np.random.seed(0)
 
 
 def main(args, sample_data=False, train_shuffle=True):
+    if type(args.policy_name) == list:
+        policy_list = args.policy_name[:]
+        for policy_name in policy_list:
+            args.policy_name = policy_name
+            main(args, sample_data=sample_data, train_shuffle=train_shuffle)
+        return
     if args.policy_name in ['unmanipulated', 'gt', 'rand']:
         args.control_only = True
     else:
@@ -192,9 +198,11 @@ def main(args, sample_data=False, train_shuffle=True):
             torch.save(model, model_save_p)
             print(f"Best model saved at {model_save_p}!")
         print(f"epoch: {ep}, time passed: {t2-t1}, train loss: {train_l2}, test loss: {test_l2}, best loss: {best_loss}.")
-        avg_metrics = {"train/avg_train_loss": train_l2,
-                    "test/avg_test_loss": test_l2,
-                    "test/best_loss": best_loss}
+        avg_metrics = {
+            "train/avg_train_loss": train_l2,
+            "test/avg_test_loss": test_l2,
+            "test/best_loss": best_loss
+            }
         
         if not args.close_wandb:
             wandb.log(avg_metrics)

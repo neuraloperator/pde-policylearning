@@ -1,34 +1,38 @@
-DATA_FOLDER: './outputs/9-close W'
+DATA_FOLDER: './outputs/33-fix-rate'
 ntrain: 180
 ntest: 20
 project_name: 'control_v2'
-exp_name: '33-fix-rate'
+exp_name: '49-scale-flow'
 path_name: planes_channel180_minchan
 model_name: RNO2dObserver
 display_variables:
   - exp_name
+  - bc_type
   - policy_name
   - control_timestep
   - model_timestep
 
 # control setups
-# state_path_name: ./data/channel180_minchan.mat  # original
-state_path_name: ./outputs/flow_900.npy
+# init_cond_path: ./data/channel180_minchan.mat  # original
+init_cond_path: ./outputs/flow_900.npy
 vis_sample_img: false
 noise_scale: 0.0
 detect_plane: -10  # get velocity from detect plane
-test_plane: -25
-w_weight: 0.8
+test_plane: -25  # not used
+w_weight: 0.0
+# bc_type: choi
+bc_type: original
 
 # policy setups
-# policy_name: rno
-# policy_name: fno
-# policy_name: rand
-policy_name: unmanipulated
-# policy_name: gt
-rand_scale: 100
+policy_name:
+  # - gt
+  - unmanipulated
+#   - rand
+  # - rno
+  # - fno
+rand_scale: 10
 reward_type: mse
-collect_data: true  # collect dataset
+collect_data: false  # collect dataset
 dump_state: false  # used to produce different initialization conditions
 
 # learning settings
@@ -52,6 +56,7 @@ random_split: false
 # visualization settings
 vis_frame: 60
 vis_interval: 1000  # default, will be overwritten.
+show_spatial_dist_interval: 50
 output_dir: ./outputs
 
 # small model
@@ -60,7 +65,7 @@ batch_size: 32
 layer_num: 1
 close_wandb: false
 epochs: 200
-control_timestep: 100
+control_timestep: 200
 
 # # large model
 # batch_size: 32  # 20
