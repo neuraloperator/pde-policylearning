@@ -8,7 +8,8 @@ torch.manual_seed(0)
 np.random.seed(0)
 
 from libs.utilities3 import *
-from libs.control_env import *
+from libs.envs.control_env import *
+from libs.envs.ns_control_2d import NSControlEnv2D
 from libs.unet_models import *
 from libs.models.fno_models import *
 from libs.pde_data_loader import *
@@ -23,7 +24,7 @@ def main(args, model=None, wandb_exist=False):
     '''
     Policy settings.
     '''
-    args.vis_interval = max(args.control_timestep // args.vis_frame, 1)
+    args.vis_interval = max(args.control_timestep // args.vis_frame, 1) if args.vis_frame > 0 else -1
     if args.policy_name == 'fno' or args.policy_name == 'rno':
         if model is None:
             print("Loading model.")
@@ -81,9 +82,8 @@ def main(args, model=None, wandb_exist=False):
     Create env.
     '''
     print("Initialization env...")
-    control_env = NSControlEnv(control_timestep=args.control_timestep, noise_scale=args.noise_scale, 
-                            init_cond_path=args.init_cond_path, detect_plane=args.detect_plane, 
-                            test_plane=args.test_plane, w_weight=args.w_weight, bc_type=args.bc_type)
+    env_class = NSControlEnv2D  # NSControlEnv
+    control_env = env_class(args, detect_plane=args.detect_plane, bc_type=args.bc_type)
     print("Environment is initialized!")
     
     '''
@@ -105,12 +105,13 @@ def main(args, model=None, wandb_exist=False):
     metadata = {}
     for i in tqdm(range(args.control_timestep + 1)):
         # pressure: [32, 32], opV2: [32, 32]
-        env_side_pressure = control_env.get_state()
-        side_pressure = torch.tensor(env_side_pressure)
-        side_pressure = demo_dataset.p_norm.encode(side_pressure).cuda()
-        side_pressure = side_pressure.reshape(-1, args.x_range, args.y_range, 1).float()
+        if args.policy_name in ['fno', 'rno']:  # neural policies
+            env_side_pressure = control_env.get_top_pressure()
+            side_pressure = torch.tensor(env_side_pressure)
+            side_pressure = demo_dataset.p_norm.encode(side_pressure).cuda()
+            side_pressure = side_pressure.reshape(-1, args.x_range, args.y_range, 1).float()
         if args.policy_name == 'rand':
-            opV2 = control_env.rand_control(side_pressure)
+            opV2 = control_env.rand_control()
             opV2 *= args.rand_scale
         elif args.policy_name == 'fno':
             opV2 = model(side_pressure, None).reshape(-1, args.x_range, args.y_range)
@@ -151,9 +152,9 @@ def main(args, model=None, wandb_exist=False):
         if not args.close_wandb and i > 0:  # ignore the first iteration
             info['control_timestep'] = i
             wandb.log(info)
-            if i % args.show_spatial_dist_interval == 1:
+            if i % args.show_spatial_dist_interval == 1 and args.vis_interval != -1:
                 control_env.plot_spatial_distribution(i)
-        if i % args.vis_interval == 0:
+        if args.vis_interval != -1 and i % args.vis_interval == 0:
             top_view, front_view, side_view = control_env.vis_state(vis_img=args.vis_sample_img)
             top_view_v.append(top_view)
             front_view_v.append(front_view)
@@ -169,14 +170,15 @@ def main(args, model=None, wandb_exist=False):
     '''
     Save visualization results.
     '''
-    exp_dir = os.path.join(args.output_dir, exp_name)
-    os.makedirs(exp_dir, exist_ok=True)
-    print(f"Saving results to folder {exp_dir}.")
-    save_images_to_video(top_view_v, os.path.join(exp_dir, exp_name + 'top_view.mp4'), fps=15)
-    save_images_to_video(front_view_v, os.path.join(exp_dir, exp_name + 'front_view.mp4'), fps=15)
-    save_images_to_video(side_view_v, os.path.join(exp_dir, exp_name + 'side_view.mp4'), fps=15)
-    save_images_to_video(opV2_v, os.path.join(exp_dir, exp_name + 'v_plane.mp4'), fps=15)
-    save_images_to_video(pressure_v, os.path.join(exp_dir, exp_name + 'pressure.mp4'), fps=15)
+    if args.vis_interval != -1:
+        exp_dir = os.path.join(args.output_dir, exp_name)
+        os.makedirs(exp_dir, exist_ok=True)
+        print(f"Saving results to folder {exp_dir}.")
+        save_images_to_video(top_view_v, os.path.join(exp_dir, exp_name + 'top_view.mp4'), fps=15)
+        save_images_to_video(front_view_v, os.path.join(exp_dir, exp_name + 'front_view.mp4'), fps=15)
+        save_images_to_video(side_view_v, os.path.join(exp_dir, exp_name + 'side_view.mp4'), fps=15)
+        save_images_to_video(opV2_v, os.path.join(exp_dir, exp_name + 'v_plane.mp4'), fps=15)
+        save_images_to_video(pressure_v, os.path.join(exp_dir, exp_name + 'pressure.mp4'), fps=15)
     print("Program finished!")
     if not args.close_wandb:
         wandb.finish()

@@ -2,7 +2,7 @@ DATA_FOLDER: './outputs/33-fix-rate'
 ntrain: 180
 ntest: 20
 project_name: 'control_v2'
-exp_name: '49-scale-flow'
+exp_name: '52-support random'
 path_name: planes_channel180_minchan
 model_name: RNO2dObserver
 display_variables:
@@ -20,17 +20,19 @@ noise_scale: 0.0
 detect_plane: -10  # get velocity from detect plane
 test_plane: -25  # not used
 w_weight: 0.0
+fix_flow: false
+
 # bc_type: choi
 bc_type: original
 
 # policy setups
 policy_name:
   # - gt
-  - unmanipulated
-#   - rand
+  - rand
+  # - unmanipulated
   # - rno
   # - fno
-rand_scale: 10
+rand_scale: 1
 reward_type: mse
 collect_data: false  # collect dataset
 dump_state: false  # used to produce different initialization conditions
@@ -54,7 +56,7 @@ recurrent_index: 0
 random_split: false
 
 # visualization settings
-vis_frame: 60
+vis_frame: -1  # 60 by default, set to -1 to close
 vis_interval: 1000  # default, will be overwritten.
 show_spatial_dist_interval: 50
 output_dir: ./outputs
@@ -65,7 +67,7 @@ batch_size: 32
 layer_num: 1
 close_wandb: false
 epochs: 200
-control_timestep: 200
+control_timestep: 1000
 
 # # large model
 # batch_size: 32  # 20
