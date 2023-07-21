@@ -8,7 +8,7 @@ torch.manual_seed(0)
 np.random.seed(0)
 
 from libs.utilities3 import *
-from libs.envs.control_env import *
+from libs.envs.control_env import NSControlEnvMatlab
 from libs.envs.ns_control_2d import NSControlEnv2D
 from libs.unet_models import *
 from libs.models.fno_models import *
@@ -82,8 +82,10 @@ def main(args, model=None, wandb_exist=False):
     Create env.
     '''
     print("Initialization env...")
-    env_class = NSControlEnv2D  # NSControlEnv
+    env_class = NSControlEnv2D
     control_env = env_class(args, detect_plane=args.detect_plane, bc_type=args.bc_type)
+    # env_class = NSControlEnvMatlab
+    # control_env = env_class(args, detect_plane=args.detect_plane, bc_type=args.bc_type)
     print("Environment is initialized!")
     
     '''
@@ -123,12 +125,18 @@ def main(args, model=None, wandb_exist=False):
             opV2 = demo_dataset.p_norm.decode(opV2.cpu())
             opV2 = opV2.detach().numpy().squeeze()
         elif args.policy_name == 'gt':
-            opV2 = control_env.gt_control()
+            env_side_pressure = control_env.get_top_pressure()
+            opV2 = control_env.gt_control()[1]   # one-side control
         elif args.policy_name == 'unmanipulated':
             opV2 = None
         else:
             raise RuntimeError("Not supported policy name.")
-        # collect data when needed
+        if i == 0 and args.policy_name == 'unmanipulated':   # remove jitter at beginning
+            for _ in range(10):
+                control_env.step(opV2)
+        '''
+        Collect data when needed
+        '''
         if args.collect_data:
             idx_str = str(i).zfill(6)
             env_side_pressure = env_side_pressure.astype(np.float64)

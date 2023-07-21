@@ -87,20 +87,24 @@ class NSControlEnv2D:
         
         # physical variables, hyper-parameters
         self.rho = 1
-        self.nu = .1
+        # self.nu = .1
+        self.nu = 1/0.32500000e4
         self.F = 1.5
         self.dt = .01
-        self.v_scale = 0.3
+        self.u_scale = 1.0
+        self.v_scale = 1.0
         
         # initial conditions
-        self.u = np.zeros((self.ny, self.nx))
-        self.un = np.zeros((self.ny, self.nx))
-        self.v = np.ones((self.ny, self.nx)) * self.v_scale
-        # self.v = np.random.rand(self.ny, self.nx) * self.v_scale
+        self.u = np.ones((self.ny, self.nx)) * self.u_scale
+        self.un = self.u.copy()
+        self.v = np.random.rand(self.ny, self.nx) * self.v_scale
+        # self.v = np.ones((self.ny, self.nx)) * self.v_scale
         self.vn = self.v.copy()
         self.p = np.ones((self.ny, self.nx))
         self.bulk_v = self.solve(None, 40000000, self.un, self.vn, self.p, self.u, self.v, self.dx, 
-                                 self.dy, self.dt, self.rho, self.nu, self.F, update_state=True)
+                                self.dy, self.dt, self.rho, self.nu, self.F, update_state=True)
+        self.init_bulk_v = None
+        self.Re = self.u.max() / self.nu
         print(f"Initially, the divergence is {self.reward_div()}. The bulk velocity is {self.bulk_v}.")
         self.info_init = None
 
@@ -355,7 +359,7 @@ class NSControlEnv2D:
         return bc
 
     def solve(self, bc, max_step, un_copy, vn_copy, p_copy, u_copy, v_copy,
-              dx, dy, dt, rho, nu, F, update_state):
+              dx, dy, dt, rho, nu, F, update_state, u_diff_thre=1e-2):
         """
         Solves the fluid flow simulation using the specified inputs.
     
@@ -381,7 +385,7 @@ class NSControlEnv2D:
         v = copy.deepcopy(v_copy)
         udiff = 1.0
         stepcount = 0
-        while udiff > .001:
+        while udiff > u_diff_thre:
             # Wall BC: u,v = 0 @ y = 0,2
             if bc is not None:
                 u[0, :] = 0
@@ -391,8 +395,8 @@ class NSControlEnv2D:
             else:  # unmanipulated
                 u[0, :] = 0
                 u[-1, :] = 0
-                # v[0, :] = 0
-                # v[-1, :] = 0
+                v[0, :] = 0
+                v[-1, :] = 0
             un = u.copy()
             vn = v.copy()
             b = build_up_b(rho, dt, dx, dy, u, v)
@@ -477,7 +481,6 @@ class NSControlEnv2D:
                 raise RuntimeError("Not converged solving!")
             if stepcount >= max_step:
                 break
-    
         bulk_v = np.mean(abs(u))
         if update_state:
             self.un = un
@@ -534,8 +537,9 @@ class NSControlEnv2D:
             print(f"Solve step: {step}, target: {target_flow}, result flow: {v}, force: {result_f}, error: {error}, using time: {time.time() - solve_begin_t}")
         return result_f, v, error
         
-    def get_top_pressure(self,):
-        return self.cal_pressure()[-1, :]
+    def get_top_pressure(self, extend_to_2d=True):
+        pressure = self.cal_pressure()[-1, :]
+        return pressure
         
     def step(self, bc):
         # Perform one step in the environment
@@ -545,8 +549,10 @@ class NSControlEnv2D:
         # self.vis_state()
         self.solve(bc, 5, self.un, self.vn, 
                    self.p, self.u, self.v, self.dx, self.dy, self.dt, self.rho, self.nu, self.F, update_state=True)
+        if self.init_bulk_v is None:
+            self.init_bulk_v = self.cal_bulk_v()
         if self.fix_flow:
-            dpdx_reverse, flow, error = self.solve_fixed_mass(bc=bc, target_flow=self.cal_bulk_v(), max_f=3*self.F)
+            dpdx_reverse, flow, error = self.solve_fixed_mass(bc=bc, target_flow=self.init_bulk_v, max_f=3*self.F)
             self.F = dpdx_reverse
         else:
             dpdx_reverse = -1

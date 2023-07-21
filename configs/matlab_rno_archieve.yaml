@@ -2,7 +2,7 @@ DATA_FOLDER: './outputs/33-fix-rate'
 ntrain: 180
 ntest: 20
 project_name: 'control_v2'
-exp_name: '56-correct-turbulence'
+exp_name: '54-refine optim controller'
 path_name: planes_channel180_minchan
 model_name: RNO2dObserver
 display_variables:
@@ -20,8 +20,8 @@ noise_scale: 0.0
 detect_plane: -10  # get velocity from detect plane
 test_plane: -25  # not used
 w_weight: 0.0
-x_range: 32
-y_range: 32
+x_range: 41
+y_range: 41
 fix_flow: true
 
 # bc_type: choi
@@ -31,12 +31,12 @@ bc_type: original
 policy_name:
   - gt
   # - rand
-  - unmanipulated
+  # - unmanipulated
   # - rno
   # - fno
 rand_scale: 1
 reward_type: mse
-collect_data: false  # collect dataset
+collect_data: true  # collect dataset
 dump_state: false  # used to produce different initialization conditions
 
 # learning settings
@@ -65,9 +65,9 @@ output_dir: ./outputs
 width: 34  # 32 by default
 batch_size: 32
 layer_num: 1
-close_wandb: false
+close_wandb: true
 epochs: 200
-control_timestep: 300
+control_timestep: 1000
 
 # # large model
 # batch_size: 32  # 20

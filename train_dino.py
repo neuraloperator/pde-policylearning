@@ -84,8 +84,9 @@ dataset_tr_eval_params, dataset_ts_params, dataloader_tr, dataloader_tr_eval, da
     process_config(input_dataset, path_results, mask_data=mask_data, device=device, n_frames_train=n_frames_train)
 epsilon = epsilon_t = 0.99
 eval_every = 100
-n_epochs = 100  # quick debug
-# n_epochs = 120000  # full epoch
+# n_epochs = 100  # quick debug
+n_epochs = 10000  # our full epoch
+# n_epochs = 120000  # original paper, long epoch
 method = "rk4" if n_cond == 0 else "euler" 
 
 if input_dataset == "wave" or input_dataset == "shallow_water":

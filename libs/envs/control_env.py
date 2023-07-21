@@ -6,7 +6,7 @@ from sklearn.metrics import mean_squared_error
 from libs.env_util import to_m, relative_loss, apply_periodic_boundary
 
 
-class NSControlEnv:
+class NSControlEnvMatlab:
     def __init__(self, control_timestep, noise_scale, init_cond_path, detect_plane, test_plane, w_weight, bc_type):
         self.control_timestep = control_timestep
         self.detect_plane = detect_plane
