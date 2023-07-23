@@ -2,15 +2,15 @@ DATA_FOLDER: './outputs/33-fix-rate'
 ntrain: 180
 ntest: 20
 project_name: 'control_v2'
-exp_name: '56-correct-turbulence'
+exp_name: '58-add pressure'
 path_name: planes_channel180_minchan
 model_name: RNO2dObserver
 display_variables:
   - exp_name
-  - bc_type
   - policy_name
   - control_timestep
   - model_timestep
+  - Re
 
 # control setups
 # init_cond_path: ./data/channel180_minchan.mat  # original
@@ -23,8 +23,8 @@ w_weight: 0.0
 x_range: 32
 y_range: 32
 fix_flow: true
-
-# bc_type: choi
+# Re: 5000
+Re: 3000
 bc_type: original
 
 # policy setups
@@ -32,7 +32,7 @@ policy_name:
   - gt
   # - rand
   - unmanipulated
-  # - rno
+  # - rno`
   # - fno
 rand_scale: 1
 reward_type: mse
@@ -65,7 +65,7 @@ output_dir: ./outputs
 width: 34  # 32 by default
 batch_size: 32
 layer_num: 1
-close_wandb: false
+close_wandb: true
 epochs: 200
 control_timestep: 300
 

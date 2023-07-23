@@ -49,19 +49,19 @@ def pressure_poisson_periodic(p, dx, dy, b, nit=50):
                          dx**2 * dy**2 / (2 * (dx**2 + dy**2)) * b[1:-1, 1:-1])
 
         # Periodic BC Pressure @ x = 2
-        p[1:-1, -1] = (((pn[1:-1, 0] + pn[1:-1, -2])* dy**2 +
+        p[1:-1, -1] = (((pn[1:-1, 0] + pn[1:-1, -2]) * dy**2 +
                         (pn[2:, -1] + pn[0:-2, -1]) * dx**2) /
                        (2 * (dx**2 + dy**2)) -
                        dx**2 * dy**2 / (2 * (dx**2 + dy**2)) * b[1:-1, -1])
 
         # Periodic BC Pressure @ x = 0
-        p[1:-1, 0] = (((pn[1:-1, 1] + pn[1:-1, -1])* dy**2 +
+        p[1:-1, 0] = (((pn[1:-1, 1] + pn[1:-1, -1]) * dy**2 +
                        (pn[2:, 0] + pn[0:-2, 0]) * dx**2) /
                       (2 * (dx**2 + dy**2)) -
                       dx**2 * dy**2 / (2 * (dx**2 + dy**2)) * b[1:-1, 0])
         
         # Wall boundary conditions, pressure
-        p[-1, :] =p[-2, :]  # dp/dy = 0 at y = 2
+        p[-1, :] = p[-2, :]  # dp/dy = 0 at y = 2
         p[0, :] = p[1, :]  # dp/dy = 0 at y = 0
     
     return p
@@ -72,6 +72,7 @@ class NSControlEnv2D:
         self.detect_plane = detect_plane
         self.bc_type = bc_type
         self.fix_flow = args.fix_flow
+        self.Re = args.Re
 
         # initialize system states
         self.nx = 41
@@ -87,24 +88,21 @@ class NSControlEnv2D:
         
         # physical variables, hyper-parameters
         self.rho = 1
-        # self.nu = .1
-        self.nu = 1/0.32500000e4
-        self.F = 1.5
+        self.F = 4.0  # 1.5
         self.dt = .01
-        self.u_scale = 1.0
-        self.v_scale = 1.0
+        self.u_scale = 1.0 # 1.0
+        self.v_scale_main = 0.15  # important parameter
+        self.v_scale_noise = 0.1
         
         # initial conditions
+        # self.u, self.v, self.p = np.ones((self.ny, self.nx)), np.zeros((self.ny, self.nx)), np.zeros((self.ny, self.nx))
         self.u = np.ones((self.ny, self.nx)) * self.u_scale
-        self.un = self.u.copy()
-        self.v = np.random.rand(self.ny, self.nx) * self.v_scale
-        # self.v = np.ones((self.ny, self.nx)) * self.v_scale
-        self.vn = self.v.copy()
-        self.p = np.ones((self.ny, self.nx))
-        self.bulk_v = self.solve(None, 40000000, self.un, self.vn, self.p, self.u, self.v, self.dx, 
-                                self.dy, self.dt, self.rho, self.nu, self.F, update_state=True)
+        self.v = np.ones((self.ny, self.nx)) * self.v_scale_main + np.random.rand(self.ny, self.nx) * self.v_scale_noise
+        self.p = self.v.copy()
+        self.nu = self.u.max() / self.Re
+        self.bulk_v = self.solve(None, -1, self.p, self.u, self.v, self.dx, 
+                                 self.dy, self.dt, self.rho, self.nu, self.F, update_state=True)
         self.init_bulk_v = None
-        self.Re = self.u.max() / self.nu
         print(f"Initially, the divergence is {self.reward_div()}. The bulk velocity is {self.bulk_v}.")
         self.info_init = None
 
@@ -169,8 +167,8 @@ class NSControlEnv2D:
         return np.mean(abs(self.u))
         
     def cal_div(self):
-        ux = (self.u[10, 10] - self.u[10, 9]) / self.dx
-        uy = (self.v[10, 10] - self.v[9, 10]) / self.dy
+        ux = (self.u[10, 10] - self.u[9, 10]) / self.dx
+        uy = (self.v[10, 10] - self.v[10, 9]) / self.dy
         return ux + uy
 
     def cal_pressure(self,):
@@ -358,7 +356,7 @@ class NSControlEnv2D:
                 bc = [-self.v[10, :], -self.v[-10, :]]
         return bc
 
-    def solve(self, bc, max_step, un_copy, vn_copy, p_copy, u_copy, v_copy,
+    def solve(self, bc, max_step, p_copy, u_copy, v_copy,
               dx, dy, dt, rho, nu, F, update_state, u_diff_thre=1e-2):
         """
         Solves the fluid flow simulation using the specified inputs.
@@ -400,11 +398,8 @@ class NSControlEnv2D:
             un = u.copy()
             vn = v.copy()
             b = build_up_b(rho, dt, dx, dy, u, v)
-            b = np.zeros_like(u)
             p = pressure_poisson_periodic(p, dx, dy, b, self.nit)
-        
-            u[1:-1, 1:-1] = (un[1:-1, 1:-1] -
-                             un[1:-1, 1:-1] * dt / dx * 
+            u[1:-1, 1:-1] = (un[1:-1, 1:-1] - un[1:-1, 1:-1] * dt / dx * 
                             (un[1:-1, 1:-1] - un[1:-1, 0:-2]) -
                              vn[1:-1, 1:-1] * dt / dy * 
                             (un[1:-1, 1:-1] - un[0:-2, 1:-1]) -
@@ -415,7 +410,6 @@ class NSControlEnv2D:
                              dt / dy**2 * 
                             (un[2:, 1:-1] - 2 * un[1:-1, 1:-1] + un[0:-2, 1:-1])) + 
                              F * dt)
-        
             v[1:-1, 1:-1] = (vn[1:-1, 1:-1] -
                              un[1:-1, 1:-1] * dt / dx * 
                             (vn[1:-1, 1:-1] - vn[1:-1, 0:-2]) -
@@ -479,7 +473,7 @@ class NSControlEnv2D:
             stepcount += 1
             if stepcount > 5000:
                 raise RuntimeError("Not converged solving!")
-            if stepcount >= max_step:
+            if max_step > 1 and stepcount >= max_step:
                 break
         bulk_v = np.mean(abs(u))
         if update_state:
@@ -496,8 +490,9 @@ class NSControlEnv2D:
             self.F = F
         return bulk_v
     
-    def solve_fixed_mass(self, bc, target_flow, min_f=0.0, max_f=3.0, max_step=500, error_threshold=1e-3,
-                        verbose=True):        
+    def solve_fixed_mass(self, bc, target_flow, min_f=0.0, max_f=3.0, max_step=500, error_threshold=1e-4,
+                        verbose=True, return_overflow=True):        
+        # tuning self.F to keep mass flow rate constant
         solve_begin_t = time.time()
         un_copy = copy.deepcopy(self.un)
         vn_copy = copy.deepcopy(self.vn)
@@ -509,10 +504,13 @@ class NSControlEnv2D:
         dt_copy = copy.deepcopy(self.dt)
         rho_copy = copy.deepcopy(self.rho)
         nu_copy = copy.deepcopy(self.nu)
-        # tuning self.F to keep mass flow rate constant
-        min_flow = self.solve(bc, 100000, un_copy, vn_copy, p_copy, u_copy, v_copy, dx_copy, dy_copy, dt_copy, rho_copy, nu_copy, min_f, update_state=False)
-        max_flow = self.solve(bc, 100000, un_copy, vn_copy, p_copy, u_copy, v_copy, dx_copy, dy_copy, dt_copy, rho_copy, nu_copy, max_f, update_state=False)
-        assert target_flow >= min_flow, f"flow too small! at least if should be {min_flow}"
+        min_flow = self.solve(bc, -1, p_copy, u_copy, v_copy, dx_copy, dy_copy, dt_copy, rho_copy, nu_copy, min_f, update_state=False)
+        max_flow = self.solve(bc, -1, p_copy, u_copy, v_copy, dx_copy, dy_copy, dt_copy, rho_copy, nu_copy, max_f, update_state=False)
+        if target_flow < min_flow and return_overflow:
+            return self.F, target_flow, 0
+        elif target_flow > max_flow and return_overflow:
+            return self.F, target_flow, 0
+        assert target_flow >= min_flow, f"flow too small! at least it should be {min_flow}"
         assert target_flow <= max_flow, f"flow too large! at least it should be {max_flow}"
         step = 0
         error = float('inf')
@@ -522,7 +520,7 @@ class NSControlEnv2D:
             mid_f = (min_f + max_f) / 2  # Calculate the midpoint
     
             # Calculate the velocity at the midpoint force
-            v = self.solve(bc, 100000, un_copy, vn_copy, p_copy, u_copy, v_copy, dx_copy, dy_copy, dt_copy, rho_copy, nu_copy, mid_f, update_state=False)
+            v = self.solve(bc, -1, p_copy, u_copy, v_copy, dx_copy, dy_copy, dt_copy, rho_copy, nu_copy, mid_f, update_state=False)
     
             error = abs(v - target_flow)  # Calculate the error
     
@@ -541,30 +539,37 @@ class NSControlEnv2D:
         pressure = self.cal_pressure()[-1, :]
         return pressure
         
-    def step(self, bc):
+    def reset_init_v(self):
+        self.init_bulk_v = self.cal_bulk_v()
+        self.info_init = None
+        
+    def step(self, bc, print_info=True):
         # Perform one step in the environment
         # Update state, calculate reward, check termination condition, etc.
         # Return the next state, reward, termination flag, and additional info
         prev_U, prev_V = self.u.copy(), self.v.copy()
         # self.vis_state()
-        self.solve(bc, 5, self.un, self.vn, 
-                   self.p, self.u, self.v, self.dx, self.dy, self.dt, self.rho, self.nu, self.F, update_state=True)
+        self.solve(bc, 3, self.p, self.u, self.v, self.dx, self.dy, self.dt, self.rho, self.nu, self.F, update_state=True)
         if self.init_bulk_v is None:
-            self.init_bulk_v = self.cal_bulk_v()
+            self.reset_init_v()
         if self.fix_flow:
-            dpdx_reverse, flow, error = self.solve_fixed_mass(bc=bc, target_flow=self.init_bulk_v, max_f=3*self.F)
+            dpdx_reverse, flow, error = self.solve_fixed_mass(bc=bc, target_flow=self.init_bulk_v, min_f=0, max_f=3*self.F, verbose=print_info)
             self.F = dpdx_reverse
+            # self.u = self.u / self.u.mean() * self.init_bulk_v
+            # dpdx_reverse = (self.p[:, 0] - self.p[:, -1]).mean()
         else:
             dpdx_reverse = -1
         pressure_top = self.cal_pressure()[-1, :]
         div = self.reward_div()
-        # bulk_velocity = 2 - shear_velocity
         u_velocity = self.cal_velocity_mean('U', sample_index=None)
         v_velocity = self.cal_velocity_mean('V', sample_index=None)
         pressure_mean = pressure_top.mean()
         speed_norm = self.cal_speed_norm()
         shear_stress = self.cal_shear_stress()
         done = False
+        if np.isnan(speed_norm):
+            print("control exploded!")
+            pdb.set_trace()
         info = {
                 'drag_reduction/1_shear_stress': shear_stress,
                 'drag_reduction/2_1_mass_flow': u_velocity,
@@ -576,7 +581,8 @@ class NSControlEnv2D:
                 }
         norm_info = self.cal_relative_info(info)
         info.update(norm_info)
-        print(info)
+        if print_info:
+            print(info)
         return pressure_top, div, done, info
 
 

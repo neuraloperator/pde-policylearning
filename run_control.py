@@ -59,7 +59,8 @@ def main(args, model=None, wandb_exist=False):
         "init_cond_path": args.init_cond_path, 
         "detect_plane": args.detect_plane,
         "test_plane": args.test_plane,
-        "bc_type": args.bc_type}
+        "bc_type": args.bc_type, 
+        "Re": args.Re}
 
     exp_name = ""
     for one_v in args.display_variables:
@@ -132,8 +133,12 @@ def main(args, model=None, wandb_exist=False):
         else:
             raise RuntimeError("Not supported policy name.")
         if i == 0 and args.policy_name == 'unmanipulated':   # remove jitter at beginning
-            for _ in range(10):
-                control_env.step(opV2)
+            print("Initializing unmanipulated ... ")
+            for _ in range(100):
+                control_env.step(opV2, print_info=False)
+            control_env.reset_init_v()
+            print("Initialization done ... ")
+
         '''
         Collect data when needed
         '''
