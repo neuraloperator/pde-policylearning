@@ -12,8 +12,7 @@ end
 
 % solve poisson equation for p
 % Fourier transform
-fft_p = fft(p,[],3);
-rhs_p_hat = fft(fft_p,[],1);
+rhs_p_hat = fft(fft(p,[],3),[],1);
 
 % solve Poisson equation in Fourier space
 for i = 1:Nx

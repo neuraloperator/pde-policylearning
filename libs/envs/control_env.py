@@ -367,10 +367,8 @@ class NSControlEnvMatlab:
         # Perform one step in the environment
         # Update state, calculate reward, check termination condition, etc.
         # Return the next state, reward, termination flag, and additional info
-        if opV2 is None:
-            opV2 = self.gt_control() * 0  # zero boundary
         prev_U, prev_V, prev_W = self.U.copy(), self.V.copy(), self.W.copy()
-        for i in range(2):  # duplicate trick
+        for i in range(2):
             self.step_rk3(opV1, opV2)
         pressure_top = self.get_top_pressure()
         div = self.reward_div()

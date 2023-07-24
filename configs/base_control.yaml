@@ -10,8 +10,7 @@ display_variables:
 DATA_FOLDER: ./data/planes_channel180_minchan
 path_name: planes_channel180_minchan
 model_name: FNO2dObserver
-# state_path_name: ./data/channel180_minchan.mat  # original
-state_path_name: ./outputs/flow_800.npy
+state_path_name: ./data/channel180_minchan.mat  # original
 use_v_plane: false
 modes: 12
 width: 32

@@ -5,12 +5,11 @@ U  = U0;
 V  = V0;
 W  = W0;
 
-% commented out by Zelin, do not apply bc here.
 opV1 = opV1 - mean(mean(opV1));
 opV2 = opV2 - mean(mean(opV2));
 
 % boundary conditions
-[U0, V0, W0] = apply_boundary_condition(U0,V0,W0,-0*opV1,opV2);
+[U0, V0, W0] = apply_boundary_condition(U0,V0,W0,-opV1,-opV2);
 
 % 1st RK step
 [Fu1, Fv1, Fw1] = compute_RHS(U,V,W,nu,dx,dz,y,ym,yg,Ny,dPdx);

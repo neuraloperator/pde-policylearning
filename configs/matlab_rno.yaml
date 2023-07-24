@@ -14,11 +14,11 @@ display_variables:
 
 # control setups
 env_name: NSControlEnvMatlab
-# init_cond_path: ./data/channel180_minchan.mat  # original
-init_cond_path: ./outputs/flow_900.npy
+init_cond_path: ./data/channel180_minchan.mat  # original
+# init_cond_path: ./outputs/flow_900.npy  # will increase drag
 vis_sample_img: false
 noise_scale: 0.0
-detect_plane: 10  # get velocity from detect plane
+detect_plane: 26  # get velocity from detect plane
 test_plane: -25  # not used
 w_weight: 0.0
 x_range: 32
