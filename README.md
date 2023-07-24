@@ -1,12 +1,12 @@
 # pde-observers
 1. Uncomment gt and set collect_data=true to generate data.
 ```
-python run_pde_observers.py --train_yaml configs/base_rno.yaml
+python run_pde_observers.py --train_yaml configs/matlab_rno.yaml
 ```
 
 2. Set data_folder to 'outputs/{exp_name}' to train rno and evaluate. The command is the same.
 ```
-python run_pde_observers.py --train_yaml configs/base_rno.yaml
+python run_pde_observers.py --train_yaml configs/matlab_rno.yaml
 ```
 
 # old instructions for reference.
@@ -22,7 +22,7 @@ python lib/mat2npy.py
 ```
 python run_pde_observers.py
 # rno
-python run_pde_observers.py --train_yaml configs/base_rno.yaml
+python run_pde_observers.py --train_yaml configs/matlab_rno.yaml
 python run_pde_observers.py --train_yaml configs/base_transformer.yaml
 ```
 

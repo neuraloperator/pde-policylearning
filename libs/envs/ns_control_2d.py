@@ -539,7 +539,7 @@ class NSControlEnv2D:
         pressure = self.cal_pressure()[-1, :]
         return pressure
         
-    def reset_init_v(self):
+    def reset_init(self):
         self.init_bulk_v = self.cal_bulk_v()
         self.info_init = None
         
@@ -551,7 +551,7 @@ class NSControlEnv2D:
         # self.vis_state()
         self.solve(bc, 3, self.p, self.u, self.v, self.dx, self.dy, self.dt, self.rho, self.nu, self.F, update_state=True)
         if self.init_bulk_v is None:
-            self.reset_init_v()
+            self.reset_init()
         if self.fix_flow:
             dpdx_reverse, flow, error = self.solve_fixed_mass(bc=bc, target_flow=self.init_bulk_v, min_f=0, max_f=3*self.F, verbose=print_info)
             self.F = dpdx_reverse

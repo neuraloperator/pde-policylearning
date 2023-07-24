@@ -13,6 +13,7 @@ display_variables:
   - Re
 
 # control setups
+env_name: NSControlEnv2D
 # init_cond_path: ./data/channel180_minchan.mat  # original
 init_cond_path: ./outputs/flow_900.npy
 vis_sample_img: false

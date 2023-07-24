@@ -50,6 +50,7 @@ def main(args, model=None, wandb_exist=False):
         "r": args.downsample_rate,
         "use_v_plane": args.use_v_plane,
         "policy_name": args.policy_name,
+        "env_name": args.env_name,
         "rand_scale": args.rand_scale,
         "reward_type": args.reward_type,
         'noise_scale': args.noise_scale,
@@ -79,14 +80,19 @@ def main(args, model=None, wandb_exist=False):
         # define metrics
         wandb.define_metric("control_timestep")
         wandb.define_metric("drag_reduction/*", step_metric="control_timestep")
+        
     '''
     Create env.
     '''
     print("Initialization env...")
-    env_class = NSControlEnv2D
-    control_env = env_class(args, detect_plane=args.detect_plane, bc_type=args.bc_type)
-    # env_class = NSControlEnvMatlab
-    # control_env = env_class(args, detect_plane=args.detect_plane, bc_type=args.bc_type)
+    if args.env_name == 'NSControlEnv2D':
+        env_class = NSControlEnv2D
+        control_env = env_class(args, detect_plane=args.detect_plane, bc_type=args.bc_type)
+    elif args.env_name == 'NSControlEnvMatlab':
+        env_class = NSControlEnvMatlab
+        control_env = env_class(args)
+    else:
+        raise RuntimeError("Not supported environment!")
     print("Environment is initialized!")
     
     '''
@@ -125,9 +131,10 @@ def main(args, model=None, wandb_exist=False):
             opV2 = model(side_pressure, None).squeeze()
             opV2 = demo_dataset.p_norm.decode(opV2.cpu())
             opV2 = opV2.detach().numpy().squeeze()
+            opV1 = opV2 * 0
         elif args.policy_name == 'gt':
             env_side_pressure = control_env.get_top_pressure()
-            opV2 = control_env.gt_control()[1]   # one-side control
+            opV1, opV2 = control_env.gt_control()   # one-side control
         elif args.policy_name == 'unmanipulated':
             opV2 = None
         else:
@@ -135,8 +142,8 @@ def main(args, model=None, wandb_exist=False):
         if i == 0 and args.policy_name == 'unmanipulated':   # remove jitter at beginning
             print("Initializing unmanipulated ... ")
             for _ in range(100):
-                control_env.step(opV2, print_info=False)
-            control_env.reset_init_v()
+                control_env.step(opV1, opV2, print_info=False)
+            control_env.reset_init()
             print("Initialization done ... ")
 
         '''
@@ -161,7 +168,7 @@ def main(args, model=None, wandb_exist=False):
             np.save(os.path.join(collect_data_folder, f'metadata.npy'), metadata)
         if control_env.reward_div() < -10:
             raise RuntimeError("Control is bloded!")
-        side_pressure, reward, done, info = control_env.step(opV2)
+        side_pressure, reward, done, info = control_env.step(opV1, opV2)
         if not args.close_wandb and i > 0:  # ignore the first iteration
             info['control_timestep'] = i
             wandb.log(info)

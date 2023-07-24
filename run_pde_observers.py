@@ -29,7 +29,7 @@ np.random.seed(0)
 def main(args, sample_data=False, train_shuffle=True):
     if type(args.policy_name) == list:
         policy_list = args.policy_name[:]
-        for policy_name in policy_list:
+        for policy_name in policy_list:  # compare different methods
             args.policy_name = policy_name
             main(args, sample_data=sample_data, train_shuffle=train_shuffle)
         return

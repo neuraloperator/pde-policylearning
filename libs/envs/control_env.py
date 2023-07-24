@@ -7,17 +7,18 @@ from libs.env_util import to_m, relative_loss, apply_periodic_boundary
 
 
 class NSControlEnvMatlab:
-    def __init__(self, control_timestep, noise_scale, init_cond_path, detect_plane, test_plane, w_weight, bc_type):
-        self.control_timestep = control_timestep
-        self.detect_plane = detect_plane
-        self.test_plane = test_plane
-        self.w_weight = w_weight
-        self.bc_type = bc_type
+    def __init__(self, args):
+        self.args = args
+        self.control_timestep = args.control_timestep
+        self.detect_plane = args.detect_plane
+        self.test_plane = args.test_plane
+        self.w_weight = args.w_weight
+        self.bc_type = args.bc_type
         print("Lauching matlab...")
         self.eng = matlab.engine.start_matlab()
         print("Lauching finished!")
         self.eng.addpath("./libs/matlab_codes")
-        self.load_state(load_path=init_cond_path)
+        self.load_state(load_path=args.init_cond_path)
         save_path = './outputs/stable_flow.npy'
         self.dump_state(save_path=save_path)
         self.load_state(load_path=save_path)
@@ -58,11 +59,11 @@ class NSControlEnvMatlab:
 
         self.DD[0, 0] += 1 / (self.y[1] - self.y[0]) / (self.yg[1] - self.yg[0])
         self.DD[-1, -1] += 1 / (self.y[self.Ny-1] - self.y[self.Ny-2]) / (self.yg[self.Ny] - self.yg[self.Ny-1])
-
-        self.add_random_noise(noise_scale)
-        # make a step forward
-        if noise_scale - 0.0 > 0.01:   # reduce the effect of noises
-            self.step(self.rand_control(self.get_state()))
+        
+        '''
+        Calculate initialized mean bulk velocity
+        '''
+        self.meanU0 = self.cal_bulk_v()
         print(f"Initially, the divergence is {self.reward_div()}.")
         init_p = self.cal_pressure()
         # Used in normalization
@@ -138,8 +139,7 @@ class NSControlEnvMatlab:
         
     '''
     Calculating scores.
-    '''
-    
+    '''  
     def cal_div(self):
         div1 = np.zeros((self.Nx, self.Ny-1, self.Nz))
         uxsum, uysum, uzsum = 0, 0, 0
@@ -186,6 +186,11 @@ class NSControlEnvMatlab:
             dpdx = dpdx[:, layer_index, :]
         dpdx = np.mean(abs(dpdx))
         return dpdx
+
+    def cal_bulk_v(self):
+        meanU = self.eng.calculate_meanU(to_m(self.ym), to_m(self.U))
+        meanU = np.array(meanU).item()
+        return meanU
 
     def cal_velocity_mean(self, velocity_name='U', sample_index=10):
         if velocity_name == 'U':
@@ -261,7 +266,7 @@ class NSControlEnvMatlab:
                 relative_dict[new_k] = info[one_k] / self.info_init[one_k]
             return relative_dict
     
-    def get_state(self):
+    def get_top_pressure(self):
         pressure = self.cal_pressure()                    # Next state after taking the action
         next_state = np.squeeze(-0.5 * (pressure[:, -1, :] + pressure[:, -2, :]))
         return next_state
@@ -346,102 +351,31 @@ class NSControlEnvMatlab:
         return opV2
     
     def gt_control(self):
-        opV2 = self.V[:, self.detect_plane, :]
-        return np.array(opV2)
+        opV1 = self.V[:, self.detect_plane, :]
+        opV1 = np.array(opV1)
+        opV2 = self.V[:, -self.detect_plane, :]
+        opV2 = np.array(opV2)
+        return opV1, opV2
 
-    def apply_bc(self, opV2):
-        if opV2 is None:  # 'unmanipulated'
-            return
-        if self.bc_type == 'original':
-            opV2 = - opV2 # apply opposition here
-            opV2 = opV2 - np.mean(opV2)
-            opV1 = opV2 * 0
-            
-            # Applying boundary conditions for U
-            self.U[:, 0, :] = -self.U[:, 1, :]
-            self.U[:, -1, :] = -self.U[:, -2, :]
-            # Applying boundary conditions for V
-            self.V[:, 0, :] = opV1
-            self.V[:, -1, :] = opV2
-            
-            # Applying boundary conditions for W
-            self.W[:, 0, :] = -self.W[:, 1, :]
-            self.W[:, -1, :] = -self.W[:, -2, :]
-        elif self.bc_type == 'zero_w':
-            opV2 = - opV2 # apply opposition here
-            opV2 = opV2 - np.mean(opV2)
-            opV1 = opV2 * 0
-            # Applying boundary conditions for U
-            self.U[:, 0, :] = self.U[:, -1, :]
-            # Applying boundary conditions for V
-            self.V[:, 0, :] = opV1
-            self.V[:, -1, :] = opV2
-            # Apply boundary counditions for W
-            self.W *= self.w_weight
-        elif self.bc_type == 'zero_bound':
-            opV2 = - opV2 # apply opposition here
-            opV2 = opV2 - np.mean(opV2)
-            opV1 = opV2 * 0
-            
-            # Applying boundary conditions for U
-            self.U[:, 0, :] = -self.U[:, 1, :]
-            self.U[:, -1, :] = -self.U[:, -2, :]
-            # Applying boundary conditions for V
-            self.V[:, 0, :] = opV1
-            self.V[:, -1, :] = opV2
-            
-            # Apply boundary counditions for W
-            self.W[0, :, :] = 0
-            self.W[-1, :, :] = 0
-            self.W[:, 0, :] = 0
-            self.W[:, -1, :] = 0
-            self.W[:, :, 0] = 0
-            self.W[:, :, -1] = 0
-        elif self.bc_type == 'choi':
-            opV2 = - opV2 # apply opposition here
-            opV2 = opV2 - np.mean(opV2)
-            
-            # Applying boundary conditions for U
-            self.U[-1, :, :] = self.U[0, :, :]
-            self.U[:, :, -1] = self.U[:, :, 0]
-
-            # Applying boundary conditions for V
-            self.V[:, -1, :] = opV2
-            self.V[:, 0, :] = 0
-
-            # Apply boundary counditions for W
-            self.W[0, :, :] = 0
-            self.W[-1, :, :] = 0
-            self.W[:, 0, :] = 0
-            self.W[:, -1, :] = 0
-            self.W[:, :, 0] = 0
-            self.W[:, :, -1] = 0
-        elif self.bc_type == 'eng':
-            U, V, W = self.eng.apply_boundary_condition(to_m(self.U), to_m(self.V), to_m(self.W), 
-                                                        -0*opV1, to_m(opV2), nargout=3)
-            self.U, self.V, self.W = np.array(U), np.array(V), np.array(W)
-        else:
-            raise RuntimeError("Not supported BC type.")
-
-    def step_rk3(self):
-        U, V, W = self.eng.time_advance_RK3(to_m(self.U), to_m(self.V), to_m(self.W), to_m(self.nu), to_m(self.dPdx), \
+    def step_rk3(self, opV1, opV2):
+        U, V, W, dPdx = self.eng.time_advance_RK3(to_m(opV1), to_m(opV2), to_m(self.U), to_m(self.V), to_m(self.W), to_m(self.meanU0), to_m(self.nu), to_m(self.dPdx), \
         to_m(self.y), to_m(self.ym), to_m(self.yg), to_m(self.dx), to_m(self.dz), to_m(self.dt), to_m(self.kxx), to_m(self.kzz), \
-            to_m(self.Nx), to_m(self.Ny), to_m(self.Nz), to_m(self.DD), nargout=3)
-        self.U, self.V, self.W = np.array(U), np.array(V), np.array(W)
+            to_m(self.Nx), to_m(self.Ny), to_m(self.Nz), to_m(self.DD), nargout=4)
+        self.U, self.V, self.W, self.dPdx = np.array(U), np.array(V), np.array(W), np.array(dPdx).item()
         
-    def step(self, opV2):
+    def step(self, opV1, opV2):
         # Perform one step in the environment
         # Update state, calculate reward, check termination condition, etc.
         # Return the next state, reward, termination flag, and additional info
+        if opV2 is None:
+            opV2 = self.gt_control() * 0  # zero boundary
         prev_U, prev_V, prev_W = self.U.copy(), self.V.copy(), self.W.copy()
-        self.apply_bc(opV2)
-        self.step_rk3()
-        pressure_top = self.get_state()
+        for i in range(2):  # duplicate trick
+            self.step_rk3(opV1, opV2)
+        pressure_top = self.get_top_pressure()
         div = self.reward_div()
         dpdx_finite_difference = self.cal_dpdx_finite_difference(pressure_top)
-        dpdx_reverse  = self.cal_dpdx_reverse(layer_index=-1)
-        # bulk_velocity = 2 - shear_velocity
-        u_velocity = self.cal_velocity_mean('U', sample_index=None)
+        u_velocity = self.cal_bulk_v()
         v_velocity = self.cal_velocity_mean('V', sample_index=None)
         w_velocity = self.cal_velocity_mean('W', sample_index=None)
         pressure_mean = pressure_top.mean()
@@ -457,7 +391,7 @@ class NSControlEnvMatlab:
                 'drag_reduction/2_3_w_velocity': w_velocity,
                 'drag_reduction/3_1_pressure_mean': pressure_mean,
                 'drag_reduction/3_2_dPdx_finite_difference': dpdx_finite_difference,
-                'drag_reduction/3_3_dPdx_reverse_cal': dpdx_reverse,
+                'drag_reduction/3_3_dPdx_reverse_cal': self.dPdx,
                 'drag_reduction/4_1_-|divergence|': div, 
                 'drag_reduction/4_2_-|now - unnoised| ÷ ｜now|': gt_diff, 
                 'drag_reduction/4_3_-|now - prev| ÷ |now|': speed_diff, 

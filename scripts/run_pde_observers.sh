@@ -1,4 +1,4 @@
-python run_pde_observers.py
+python run_pde_observers.py --
 
 # process data
 python lib/mat2npy.py
