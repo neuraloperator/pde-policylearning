@@ -41,4 +41,4 @@ w_weight: 0.8
 vis_frame: 60
 vis_interval: 1000  # default, will be overwritten.
 output_dir: ./outputs
-close_wandb: true
+close_wandb: false

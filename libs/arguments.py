@@ -32,5 +32,6 @@ def parse_arguments():
                         help='yaml path to load configs')
     parser.add_argument('--train_yaml', type=str, default='configs/base_rno.yaml',
                         help='yaml path to load configs')
+    parser.add_argument('--force_close_wandb', action='store_true', help='close wandb log.')
     args = parser.parse_args()
     return args

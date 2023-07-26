@@ -218,4 +218,6 @@ if __name__ == '__main__':
     args = parse_arguments()
     loaded_args = load_arguments_from_yaml(args.train_yaml)
     args = merge_args_with_yaml(args, loaded_args)
+    if args.force_close_wandb:
+        args.close_wandb = True
     main(args)

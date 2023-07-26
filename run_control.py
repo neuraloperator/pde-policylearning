@@ -112,6 +112,7 @@ def main(args, model=None, wandb_exist=False):
     '''
     pressure_v, opV2_v, top_view_v, front_view_v, side_view_v, all_p, all_v = [], [], [], [], [], [], []
     metadata = {}
+    final_all_field = []
     for i in tqdm(range(args.control_timestep + 1)):
         # pressure: [32, 32], opV2: [32, 32]
         if args.policy_name in ['fno', 'rno']:  # neural policies
@@ -150,22 +151,29 @@ def main(args, model=None, wandb_exist=False):
         Collect data when needed
         '''
         if args.collect_data:
-            idx_str = str(i).zfill(6)
-            env_side_pressure = env_side_pressure.astype(np.float64)
-            opV2 = opV2.astype(np.float64)
-            field_name = 'P_planes'
-            np.save(os.path.join(collect_data_folder, f'{field_name}_{idx_str}.npy'), env_side_pressure)
-            all_p.append(env_side_pressure)
-            metadata[field_name] = {}
-            metadata[field_name]['mean'] = np.array(all_p).mean(0)
-            metadata[field_name]['std'] = np.array(all_p).std(0)
-            field_name = 'V_planes'
-            np.save(os.path.join(collect_data_folder, f'{field_name}_{idx_str}.npy'), opV2)
-            all_v.append(opV2)
-            metadata[field_name] = {}
-            metadata[field_name]['mean'] = np.array(all_v).mean(0)
-            metadata[field_name]['std'] = np.array(all_v).std(0)
-            np.save(os.path.join(collect_data_folder, f'metadata.npy'), metadata)
+            if args.collect_full_field:
+                pressure_field = control_env.cal_pressure()
+                all_field = np.stack([pressure_field, control_env.U[:, 1:-1, :], control_env.V[:, :-1, :], control_env.W[:, 1:-1, :]])
+                final_all_field.append(all_field)
+                final_field = np.stack(final_all_field)
+                np.save(os.path.join(collect_data_folder, f'Re-{args.Re}-Exp-name-{args.exp_name}.npy'), final_field)
+            else:
+                idx_str = str(i).zfill(6)
+                env_side_pressure = env_side_pressure.astype(np.float64)
+                opV2 = opV2.astype(np.float64)
+                field_name = 'P_planes'
+                np.save(os.path.join(collect_data_folder, f'{field_name}_{idx_str}.npy'), env_side_pressure)
+                all_p.append(env_side_pressure)
+                metadata[field_name] = {}
+                metadata[field_name]['mean'] = np.array(all_p).mean(0)
+                metadata[field_name]['std'] = np.array(all_p).std(0)
+                field_name = 'V_planes'
+                np.save(os.path.join(collect_data_folder, f'{field_name}_{idx_str}.npy'), opV2)
+                all_v.append(opV2)
+                metadata[field_name] = {}
+                metadata[field_name]['mean'] = np.array(all_v).mean(0)
+                metadata[field_name]['std'] = np.array(all_v).std(0)
+                np.save(os.path.join(collect_data_folder, f'metadata.npy'), metadata)
         if control_env.reward_div() < -10:
             raise RuntimeError("Control is bloded!")
         side_pressure, reward, done, info = control_env.step(opV1, opV2)

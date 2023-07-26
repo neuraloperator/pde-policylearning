@@ -1,0 +1,1 @@
+python train_pino.py --config configs/pretrain/Re400-pretrain-1s.yaml

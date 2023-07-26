@@ -1,8 +1,3 @@
-"""
-@author: Zongyi Li
-This file is the Fourier Neural Operator for the 2D Navier—Stokes problem discussed in Section 5.3 in the [paper](https://arxiv.org/pdf/2010.08895.pdf).
-"""
-
 ################################################################
 # Imports
 ################################################################

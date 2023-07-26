@@ -1,5 +1,3 @@
-
-
 import numpy as np
 import torch
 import torch.nn as nn
@@ -9,16 +7,12 @@ import numpy.random as random
 import matplotlib
 import matplotlib.pyplot as plt
 import seaborn as sns
-
 from scipy.stats import wasserstein_distance
-
 font = {'size'   : 28}
 matplotlib.rc('font', **font)
-
 import operator
 from functools import reduce
 from functools import partial
-
 from timeit import default_timer
 from utilities4 import *
 
@@ -106,7 +100,7 @@ print(np.max(fno_error), np.max(interp_error))
 ### FFT plot
 ##############################################################
 
-#
+
 def spectrum2(u):
     T = u.shape[0]
     u = u.reshape(T, s, s)
@@ -114,8 +108,6 @@ def spectrum2(u):
     u = torch.fft.fft2(u)
     # ur = u[..., 0]
     # uc = u[..., 1]
-
-
     # 2d wavenumbers following Pytorch fft convention
     k_max = s // 2
     wavenumers = torch.cat((torch.arange(start=0, end=k_max, step=1), \
@@ -128,9 +120,6 @@ def spectrum2(u):
     # Remove symmetric components from wavenumbers
     index = -1.0 * np.ones((s, s))
     index[0:k_max + 1, 0:k_max + 1] = sum_k[0:k_max + 1, 0:k_max + 1]
-
-
-
     spectrum = np.zeros((T, s))
     for j in range(1, s + 1):
         ind = np.where(index == j)
@@ -186,7 +175,7 @@ ax.set_xlim(1,80)
 # ax.set_ylim(1,10000000000)
 ax.set_ylim(10000,10000000000)
 # ax.set_yticks([0.05,0.10,0.15])
-#
+
 plt.legend(prop={'size': 20})
 # plt.title('averaged over t=[0,'+str(frame)+']' )
 plt.title('spectrum of Kolmogorov Flows' )

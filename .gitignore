@@ -168,3 +168,5 @@ outputs/*
 results
 results/*
 debug*
+.vscode
+.vscode/*

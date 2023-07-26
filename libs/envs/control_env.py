@@ -9,6 +9,11 @@ from libs.env_util import to_m, relative_loss, apply_periodic_boundary
 class NSControlEnvMatlab:
     def __init__(self, args):
         self.args = args
+        self.Re = args.Re
+        self.nu = 1 / 0.32500000E+04
+        self.default_re = 178.1899
+        if self.Re is not None:
+            self.nu = self.nu * (self.default_re / self.Re)
         self.control_timestep = args.control_timestep
         self.detect_plane = args.detect_plane
         self.test_plane = args.test_plane
@@ -115,7 +120,6 @@ class NSControlEnvMatlab:
         self.zm = mat_data['zm']
         
         # Global variables
-        self.nu = 1 / 0.32500000E+04  # kinematic viscosity
         self.dPdx = 0.57231059E-01**2  # pressure gradient (utau^2)
         self.dt = 0.001  # time step
         self.dx = self.x[1] - self.x[0]
@@ -140,6 +144,7 @@ class NSControlEnvMatlab:
     '''
     Calculating scores.
     '''  
+    
     def cal_div(self):
         div1 = np.zeros((self.Nx, self.Ny-1, self.Nz))
         uxsum, uysum, uzsum = 0, 0, 0
