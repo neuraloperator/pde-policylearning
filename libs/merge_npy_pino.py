@@ -103,69 +103,28 @@ def vis_spec(data_list, labels, output_file='output_plot', figsize=(6, 5)):
     plt.ylabel('Energy')
     plt.savefig(output_file + '.jpg', dpi=300)  # Adjust dpi (dots per inch) for higher resolution if needed
 
-# root_dir = './data/pino'
-root_dir = './outputs/58-collect-data-new'
-rey_names = ['100', '500', '1000', '5000', '10000', '100000']
+root_dir = './data/pino'
+rey_names = ['100', '200', '250', '300', '350', '400']
 data_list = []
 labels = []
-
+meta_re = []
+data_num = 20
 for rey_name in rey_names:
-    npy_name = f'Re-{rey_name}-Exp-name-58-collect-data-new'
-    # npy_name = f'NS_fine_Re{rey_name}_T128_part0'
+    npy_name = f'NS_fine_Re{rey_name}_T128_part0'
     npy_path = os.path.join(root_dir, npy_name + '.npy')
     print("Loading ...", npy_path)
     start_t = time.time()
     data = np.load(npy_path)
-    print('data mean:', abs(data).mean())
-    data_list.append(data)
-    labels.append(f"Re={rey_name}")
+    meta_re.append(np.array([int(rey_name) for _ in range(data_num)]))
+    data_list.append(data[:data_num])
     print("Consuming time:", time.time() - start_t)
+
+meta_re = np.concatenate(meta_re)
+all_data = np.concatenate(data_list, axis=0)
+np.savez('data/pino/multi_reynolds_NS_fine_T128', data1=all_data, data2=meta_re)
+
+loaded_data = np.load('data/pino/multi_reynolds_NS_fine_T128.npz')
 
 vis_spec(data_list, labels, 'output_plot')
 
 import pdb; pdb.set_trace()
-
-# save_dir = os.path.join(root_dir, npy_name)
-# os.makedirs(save_dir, exist_ok=True)
-# reader = MatReader(mat_path)
-# print("Loading mat data ...")
-# meta_data = {}
-# # np.save(os.path.join(save_dir, f'metadata.npy'), meta_data)
-
-# field_name = 'P_plane' if not minchan else 'P_planes'
-# meta_data[field_name] = {}
-# field_data = reader.read_field(field_name).permute(2,0,1)
-# filed_data_mean = torch.mean(field_data, 0)
-# field_data_std = torch.std(field_data, 0)
-# field_data_max = torch.max(field_data)
-# field_data_min = torch.min(field_data)
-# meta_data[field_name]['mean'] = np.array(filed_data_mean)
-# meta_data[field_name]['std'] = np.array(field_data_std)
-# meta_data[field_name]['max'] = np.array(field_data_max)
-# meta_data[field_name]['min'] = np.array(field_data_min)
-
-# for idx, one_data in enumerate(field_data):
-#     print(f"Handling {field_name} data idx {idx} ...")
-#     one_data = np.array(one_data)
-#     idx_str = str(idx).zfill(fill_width)
-#     np.save(os.path.join(save_dir, f'{field_name}_{idx_str}.npy'), one_data)
-
-# field_name = 'V_plane' if not minchan else 'V_planes'
-# meta_data[field_name] = {}
-# field_data = reader.read_field(field_name).permute(2,0,1)
-# filed_data_mean = torch.mean(field_data, 0)
-# field_data_std = torch.std(field_data, 0)
-# field_data_max = torch.max(field_data)
-# field_data_min = torch.min(field_data)
-# meta_data[field_name]['mean'] = np.array(filed_data_mean)
-# meta_data[field_name]['std'] = np.array(field_data_std)
-# meta_data[field_name]['max'] = np.array(field_data_max)
-# meta_data[field_name]['min'] = np.array(field_data_min)
-
-# for idx, one_data in enumerate(field_data):
-#     print(f"Handling {field_name} data idx {idx} ...")
-#     one_data = np.array(one_data)
-#     idx_str = str(idx).zfill(fill_width)
-#     np.save(os.path.join(save_dir, f'{field_name}_{idx_str}.npy'), one_data)
-
-# np.save(os.path.join(save_dir, f'metadata.npy'), meta_data)

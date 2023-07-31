@@ -32,25 +32,25 @@ model:
   pad_ratio: 0.0625
 
 train:
-  batchsize: 4
+  batchsize: 2  # 4
   epochs: 150
   milestones: [25, 50, 75, 100]
   base_lr: 0.001
   scheduler_gamma: 0.5
-  ic_loss: 0.0
-  f_loss: 0.0
-  # ic_loss: 1.0
-  # f_loss: 1.0
+  # ic_loss: 0.0
+  # f_loss: 0.0
+  ic_loss: 1.0
+  f_loss: 1.0
   xy_loss: 5.0
   start_iter: 0
-  num_iter: 150_001
+  num_iter: 20_001  # 150_001
   save_step: 5000
   eval_step: 5000
   save_dir: 'Re400-FDM'
   save_name: 'PINO-pretrain-Re400-1s.pt'
 
 test:
-  batchsize: 4
+  batchsize: 2  # 4
   data_res: [128, 128, 65]
 
 log:

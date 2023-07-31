@@ -582,10 +582,11 @@ class MultipleReynoldsKFaDataset(Dataset):
         start_t = time.time()
         if 'multi_reynolds' in datapath:
             loaded_data = np.load(datapath)
-            raw_data, self.re = torch.tensor(loaded_data['data1']).float(), torch.tensor(loaded_data['data2']).float()
+            raw_data, self.re = loaded_data['data1'], loaded_data['data2']
         else:
-            self.re = int(re.search(r'Re(\d+)', datapath).group(1))
             raw_data = np.load(datapath, mmap_mode='r')
+            self.re = int(re.search(r'Re(\d+)', datapath).group(1))
+            self.re = torch.tensor([self.re for _ in range(raw_data.shape[0])]).float()
             print(f"Data loaded! using time: {time.time() - start_t}")
         # subsample ratio
         sub_x = self.raw_res[0] // self.data_res[0]
@@ -635,7 +636,6 @@ class MultipleReynoldsKFaDataset(Dataset):
                     reynold_numbers[i * K + j] = self.re
                 else:
                     reynold_numbers[i * K + j] = self.re[i]
-        reynold_numbers = torch.tensor(reynold_numbers).float()
         return new_data, reynold_numbers
     
 

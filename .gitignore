@@ -170,3 +170,5 @@ results/*
 debug*
 .vscode
 .vscode/*
+exp/
+exp/*

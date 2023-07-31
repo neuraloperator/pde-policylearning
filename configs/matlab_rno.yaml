@@ -2,7 +2,7 @@ DATA_FOLDER: './outputs/55-recollect-data'
 ntrain: 180
 ntest: 20
 project_name: 'control_v2'
-exp_name: '57-collect-data'
+exp_name: '58-collect-data-new'
 path_name: planes_channel180_minchan
 model_name: RNO2dObserver
 display_variables:
@@ -29,14 +29,15 @@ bc_type: original
 
 # policy setups
 policy_name:
-  - gt
+  # - gt
   # - rand
-  # - unmanipulated
+  - unmanipulated
   # - rno
   # - fno
 rand_scale: 1
 reward_type: mse
 collect_data: true  # collect dataset
+collect_start: 0  # wait for some initialization steps
 collect_full_field: true
 dump_state: false  # used to produce different initialization conditions
 
@@ -68,7 +69,7 @@ batch_size: 32
 layer_num: 1
 close_wandb: false
 epochs: 200
-control_timestep: 200
+control_timestep: 400
 
 # # large model
 # batch_size: 32  # 20

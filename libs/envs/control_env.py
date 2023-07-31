@@ -349,6 +349,8 @@ class NSControlEnvMatlab:
     '''
     Control policies.
     '''
+    def reset_init(self):
+        self.info_init = None
     
     def rand_control(self, P):
         opV2 = self.eng.compute_opposition(to_m(P))

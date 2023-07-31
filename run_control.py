@@ -33,7 +33,7 @@ def main(args, model=None, wandb_exist=False):
     elif args.policy_name == 'rand':
         args.display_variables.append('rand_scale')
     
-    if args.policy_name != 'gt':
+    if args.policy_name != 'gt' and args.policy_name != 'unmanipulated':
         args.collect_data = False
     
     config_dict = {
@@ -137,20 +137,22 @@ def main(args, model=None, wandb_exist=False):
             env_side_pressure = control_env.get_top_pressure()
             opV1, opV2 = control_env.gt_control()   # one-side control
         elif args.policy_name == 'unmanipulated':
-            opV2 = None
+            opV1, opV2 = control_env.gt_control()
+            opV1 *= 0
+            opV2 *= 0
         else:
             raise RuntimeError("Not supported policy name.")
         if i == 0 and args.policy_name == 'unmanipulated':   # remove jitter at beginning
-            print("Initializing unmanipulated ... ")
-            for _ in range(100):
-                control_env.step(opV1, opV2, print_info=False)
+            # print("Initializing unmanipulated ... ")
+            # for _ in range(100):
+            #     control_env.step(opV1, opV2, print_info=False)
+            # print("Initialization done ... ")
             control_env.reset_init()
-            print("Initialization done ... ")
 
         '''
         Collect data when needed
         '''
-        if args.collect_data:
+        if args.collect_data and i > args.collect_start:
             if args.collect_full_field:
                 pressure_field = control_env.cal_pressure()
                 all_field = np.stack([pressure_field, control_env.U[:, 1:-1, :], control_env.V[:, :-1, :], control_env.W[:, 1:-1, :]])

@@ -1,1 +1,1 @@
-python train_pino.py --config configs/pretrain/Re400-pretrain-1s.yaml
+python train_pino.py --config configs/pino-observer-pretrain-1s.yaml --tqdm
