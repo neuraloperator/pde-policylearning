@@ -27,7 +27,6 @@ def compl_mul3d(a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
 # 1d fourier layer
 ################################################################
 
-
 class SpectralConv1d(nn.Module):
     def __init__(self, in_channels, out_channels, modes1):
         super(SpectralConv1d, self).__init__()
@@ -61,7 +60,6 @@ class SpectralConv1d(nn.Module):
 ################################################################
 # 2d fourier layer
 ################################################################
-
 
 class SpectralConv2d(nn.Module):
     def __init__(self, in_channels, out_channels, modes1, modes2):
@@ -171,5 +169,3 @@ class FourierBlock(nn.Module):
         if self.act is not None:
             out = self.act(out)
         return out
-
-

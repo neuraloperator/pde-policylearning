@@ -82,12 +82,12 @@ def train_ns(model,
     for e in pbar:
         log_dict = {}
         optimizer.zero_grad()
+        u, a_in, re = next(u_loader)
+        u = u.to(device)
+        a_in = a_in.to(device)  # 1, 128, 128, 65, 4
+        re = re.to(device)
         # data loss
         if xy_weight > 0:
-            u, a_in, re = next(u_loader)
-            u = u.to(device)
-            a_in = a_in.to(device)  # 1, 128, 128, 65, 4
-            re = re.to(device)
             out = model(a_in, re)
             data_loss = lploss(out, u)
         else:

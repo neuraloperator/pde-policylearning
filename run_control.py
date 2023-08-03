@@ -103,9 +103,12 @@ def main(args, model=None, wandb_exist=False):
         os.makedirs(collect_data_folder, exist_ok=True)
     else:
         collect_data_folder = None
-        
-    demo_dataset = PDEDataset(args, args.DATA_FOLDER, [1, 2, 3, 4, 5], args.downsample_rate, args.x_range, 
-                              args.y_range, use_patch=False)
+    
+    if args.policy_name not in ["gt", "rand", "unmanipulated"]:
+        demo_dataset = PDEDataset(args, args.DATA_FOLDER, [1, 2, 3, 4, 5], args.downsample_rate, args.x_range, 
+                                args.y_range, use_patch=False)
+    else:
+        demo_dataset = None
 
     '''
     Main control loop.
@@ -210,7 +213,7 @@ def main(args, model=None, wandb_exist=False):
         save_images_to_video(opV2_v, os.path.join(exp_dir, exp_name + 'v_plane.mp4'), fps=15)
         save_images_to_video(pressure_v, os.path.join(exp_dir, exp_name + 'pressure.mp4'), fps=15)
     print("Program finished!")
-    if not args.close_wandb:
+    if not args.close_wandb and not wandb_exist:
         wandb.finish()
 
 

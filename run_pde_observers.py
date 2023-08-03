@@ -27,6 +27,8 @@ np.random.seed(0)
 
 
 def main(args, sample_data=False, train_shuffle=True):
+    if not args.close_wandb:
+        wandb.login(key='05f0a1690d6802d6714bfe7d8aea302e690f7c27')
     if type(args.policy_name) == list:
         policy_list = args.policy_name[:]
         for policy_name in policy_list:  # compare different methods
@@ -42,8 +44,6 @@ def main(args, sample_data=False, train_shuffle=True):
         return
     args.using_transformer = 'Transformer' in args.model_name
     assert args.model_name in ['UNet', 'RNO2dObserver', 'FNO2dObserverOld', 'FNO2dObserver', 'Transformer2D'],  "Model not supported!"
-    if not args.close_wandb:
-        wandb.login(key='05f0a1690d6802d6714bfe7d8aea302e690f7c27')
     if args.random_split:
         idx = torch.randperm(args.ntrain + args.ntest)
     else:

@@ -1,25 +1,25 @@
 data:
   test_paths: ['data/pino/NS_fine_Re500_T128_part0.npy']
   train_paths: ['data/pino/multi_reynolds_NS_fine_T128.npz']
-  # train_paths: ['data/pino/NS_fine_Re500_T128_part0.npy', 'data/pino/NS_fine_Re500_T128_part1.npy']
+  # datapath: 'data/NS_fine_Re400_T128_part0.npy'
+  # Re: 400
   # total_num: 100
-  offset: 0
-  n_sample: 200
+  # offset: 199
+  # n_sample: 1
+  offset: 80
+  testoffset: 80
+  n_data_samples: 1
+  n_test_samples: 1
   time_interval: 1.0
   nx: 128
   nt: 128
   sub: 1
   sub_t: 2
   shuffle: True
-  n_data_samples: 120
-  testoffset: 80
-  n_test_samples: 20
   t_duration: 0.5
   raw_res: [128, 128, 129]
   data_res: [128, 128, 129]  # resolution in 1 second
   pde_res: [128, 128, 129]   # resolution in 1 second
-  n_a_samples: 100
-  a_offset: 0
 
 model:
   layers: [64, 64, 64, 64, 64]
@@ -32,33 +32,28 @@ model:
   pad_ratio: 0.0625
 
 train:
-  batchsize: 4  # 4
-  epochs: 150
-  milestones: [25, 50, 75, 100]
-  base_lr: 0.001
-  scheduler_gamma: 0.5
-  # ic_loss: 0.0
-  # f_loss: 0.0
-  ic_loss: 1.0
-  f_loss: 1.0
-  xy_loss: 5.0
   start_iter: 0
-  num_iter: 20_001  # 150_001
+  batchsize: 4
+  epochs: 10000
+  num_iter: 20_001
+  milestones: [500, 1500, 3000, 4000, 6000]
+  base_lr: 0.0025
+  scheduler_gamma: 0.5
+  ic_loss: 5.0
+  f_loss: 1.0
+  xy_loss: 0.0
   save_step: 5000
   eval_step: 5000
   save_dir: 'Re400-FDM'
-  save_name: 'PINO-pretrain-Re400-1s.pt'
+  save_name: 'PINO-finetune-Re400-1s.pt'
+  ckpt: 'exp/Re400-1_8s-dat80-PINO/ckpts/model-20000.pt'
 
 test:
   batchsize: 4  # 4
   data_res: [128, 128, 65]
 
 log:
-  project: 'PINO-pretrain'
-  group: 'Re400-1s-tanh'
-
-log:
+  project: PINO-NS
+  group: Re400-finetune-1_8s-dat80-PINO
   logdir: Re400-1_8s-dat80-PINO
   entity: zlzhao-pino
-  project: PINO-NS
-  group: Re400-1_8s-dat80-PINO

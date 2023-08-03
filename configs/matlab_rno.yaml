@@ -1,8 +1,8 @@
-DATA_FOLDER: './outputs/55-recollect-data'
+DATA_FOLDER: './outputs/59-gt-curve-500'
 ntrain: 180
 ntest: 20
 project_name: 'control_v2'
-exp_name: '58-collect-data-new'
+exp_name: '59-gt-curve-500'
 path_name: planes_channel180_minchan
 model_name: RNO2dObserver
 display_variables:
@@ -24,21 +24,21 @@ w_weight: 0.0
 x_range: 32
 y_range: 32
 fix_flow: true
-Re: 300
+Re: 500
 bc_type: original
 
 # policy setups
 policy_name:
   # - gt
   # - rand
-  - unmanipulated
-  # - rno
+  # - unmanipulated
+  - rno
   # - fno
 rand_scale: 1
 reward_type: mse
-collect_data: true  # collect dataset
+collect_data: false  # collect dataset
 collect_start: 0  # wait for some initialization steps
-collect_full_field: true
+collect_full_field: false # true
 dump_state: false  # used to produce different initialization conditions
 
 # learning settings

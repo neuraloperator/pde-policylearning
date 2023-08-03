@@ -178,16 +178,10 @@ class PINObserver2d(nn.Module):
         self.ws = nn.ModuleList([nn.Conv1d(in_size, out_size, 1)
                                  for in_size, out_size in zip(self.layers, self.layers[1:])])
 
+        self.bilinear_inform2 = CodeBilinear(in1_features=layers[-1], in2_features=1, out_features=layers[-1])
         self.fc1 = nn.Linear(layers[-1], fc_dim)
         self.fc2 = nn.Linear(fc_dim, out_dim)
-        self.bilinear_inform2 = CodeBilinear(in1_features=fc_dim, in2_features=1, out_features=fc_dim)
         self.act = _get_act(act)
-        
-    # def tile_and_attach(self, x, re):
-    #     bs, x_grid, y_grid, t_grid, _ = x.shape
-    #     re = re.unsqueeze(1).unsqueeze(2).unsqueeze(3).unsqueeze(-1).expand(-1, x_grid, y_grid, t_grid, 1)
-    #     res = torch.concat([x, re], dim=-1)
-    #     return res
 
     def forward(self, x, re):
         '''
@@ -208,7 +202,7 @@ class PINObserver2d(nn.Module):
         batchsize = x.shape[0]
         
         x = self.fc0(x)
-        x = self.bilinear_inform(x, re)  # added by zelin
+        x = self.bilinear_inform(x, re)
         x = x.permute(0, 4, 1, 2, 3)
         x = add_padding(x, num_pad=num_pad)
         size_x, size_y, size_z = x.shape[-3], x.shape[-2], x.shape[-1]
@@ -221,8 +215,8 @@ class PINObserver2d(nn.Module):
                 x = self.act(x)
         x = remove_padding(x, num_pad=num_pad)
         x = x.permute(0, 2, 3, 4, 1)
+        x = self.bilinear_inform2(x, re)
         x = self.fc1(x)
         x = self.act(x)
-        x = self.bilinear_inform2(x, re)  # added by zelin
         x = self.fc2(x)
         return x
