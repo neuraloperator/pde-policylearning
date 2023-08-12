@@ -113,14 +113,14 @@ def main(args, model=None, wandb_exist=False):
     '''
     Main control loop.
     '''
-    pressure_v, opV2_v, top_view_v, front_view_v, side_view_v, all_p, all_v = [], [], [], [], [], [], []
+    pressure_v, opV2_v, top_view_v, front_view_v, side_view_v, all_p_boundary, all_v_boundary = [], [], [], [], [], [], []
     metadata = {}
-    final_all_field = []
+    all_u_field, all_v_field, all_w_field = [], [], []
     for i in tqdm(range(args.control_timestep + 1)):
         # pressure: [32, 32], opV2: [32, 32]
         if args.policy_name in ['fno', 'rno']:  # neural policies
-            env_side_pressure = control_env.get_top_pressure()
-            side_pressure = torch.tensor(env_side_pressure)
+            p1, p2 = control_env.get_boundary_pressures()
+            side_pressure = torch.tensor(p2)
             side_pressure = demo_dataset.p_norm.encode(side_pressure).cuda()
             side_pressure = side_pressure.reshape(-1, args.x_range, args.y_range, 1).float()
         if args.policy_name == 'rand':
@@ -137,7 +137,7 @@ def main(args, model=None, wandb_exist=False):
             opV2 = opV2.detach().numpy().squeeze()
             opV1 = opV2 * 0
         elif args.policy_name == 'gt':
-            env_side_pressure = control_env.get_top_pressure()
+            p1, p2 = control_env.get_boundary_pressures()
             opV1, opV2 = control_env.gt_control()   # one-side control
         elif args.policy_name == 'unmanipulated':
             opV1, opV2 = control_env.gt_control()
@@ -155,30 +155,47 @@ def main(args, model=None, wandb_exist=False):
         '''
         Collect data when needed
         '''
+        
         if args.collect_data and i > args.collect_start:
-            if args.collect_full_field:
-                pressure_field = control_env.cal_pressure()
-                all_field = np.stack([pressure_field, control_env.U[:, 1:-1, :], control_env.V[:, :-1, :], control_env.W[:, 1:-1, :]])
-                final_all_field.append(all_field)
-                final_field = np.stack(final_all_field)
-                np.save(os.path.join(collect_data_folder, f'Re-{args.Re}-Exp-name-{args.exp_name}.npy'), final_field)
-            else:
-                idx_str = str(i).zfill(6)
-                env_side_pressure = env_side_pressure.astype(np.float64)
-                opV2 = opV2.astype(np.float64)
-                field_name = 'P_planes'
-                np.save(os.path.join(collect_data_folder, f'{field_name}_{idx_str}.npy'), env_side_pressure)
-                all_p.append(env_side_pressure)
-                metadata[field_name] = {}
-                metadata[field_name]['mean'] = np.array(all_p).mean(0)
-                metadata[field_name]['std'] = np.array(all_p).std(0)
-                field_name = 'V_planes'
-                np.save(os.path.join(collect_data_folder, f'{field_name}_{idx_str}.npy'), opV2)
-                all_v.append(opV2)
-                metadata[field_name] = {}
-                metadata[field_name]['mean'] = np.array(all_v).mean(0)
-                metadata[field_name]['std'] = np.array(all_v).std(0)
-                np.save(os.path.join(collect_data_folder, f'metadata.npy'), metadata)
+            idx_str = str(i).zfill(6)
+            # (1) save boundary pressure
+            p1, p2 = p1.astype(np.float64), p2.astype(np.float64)
+            opV1, opV2 = opV1.astype(np.float64), opV2.astype(np.float64)
+            field_name = 'P_planes'
+            np.save(os.path.join(collect_data_folder, f'{field_name}_{idx_str}.npy'), np.array(p2))
+            all_p_boundary.append(p2)
+            metadata[field_name] = {}
+            metadata[field_name]['mean'] = np.array(all_p_boundary).mean(0)
+            metadata[field_name]['std'] = np.array(all_p_boundary).std(0)
+            # (2) save boundary velocity
+            field_name = 'V_planes'
+            np.save(os.path.join(collect_data_folder, f'{field_name}_{idx_str}.npy'), np.array(opV2))
+            all_v_boundary.append(opV2)
+            metadata[field_name] = {}
+            metadata[field_name]['mean'] = np.array(all_v_boundary).mean(0)
+            metadata[field_name]['std'] = np.array(all_v_boundary).std(0)
+            # (3) save u field info
+            field_name = 'U_field'
+            np.save(os.path.join(collect_data_folder, f'{field_name}_{idx_str}.npy'), np.array(control_env.U))
+            all_u_field.append(np.array(control_env.U))
+            metadata[field_name] = {}
+            metadata[field_name]['mean'] = np.array(all_u_field).mean(0)
+            metadata[field_name]['std'] = np.array(all_u_field).std(0)
+            # (4) save v field info
+            field_name = 'V_field'
+            np.save(os.path.join(collect_data_folder, f'{field_name}_{idx_str}.npy'), np.array(control_env.V))
+            all_v_field.append(np.array(control_env.V))
+            metadata[field_name] = {}
+            metadata[field_name]['mean'] = np.array(all_v_field).mean(0)
+            metadata[field_name]['std'] = np.array(all_v_field).std(0)
+            # (5) save w field info
+            field_name = 'W_field'
+            np.save(os.path.join(collect_data_folder, f'{field_name}_{idx_str}.npy'), np.array(control_env.W))
+            all_w_field.append(np.array(control_env.W))
+            metadata[field_name] = {}
+            metadata[field_name]['mean'] = np.array(all_w_field).mean(0)
+            metadata[field_name]['std'] = np.array(all_w_field).std(0)
+            np.save(os.path.join(collect_data_folder, f'metadata.npy'), metadata)
         if control_env.reward_div() < -10:
             raise RuntimeError("Control is bloded!")
         side_pressure, reward, done, info = control_env.step(opV1, opV2)

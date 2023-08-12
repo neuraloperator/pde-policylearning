@@ -35,10 +35,7 @@ class NSControlEnvMatlab:
         self.W_gt = self.W.copy()
         np.random.seed(0)
         self.s = np.random.default_rng()
-        # # Call matlab main directly.
-        # status = self.eng.main(to_m(self.x),to_m(self.y),to_m(self.z),to_m(self.xm),
-        #                        to_m(self.ym),to_m(self.zm),to_m(self.UU),to_m(self.VV),
-        #                        to_m(self.WW))
+
         # Define modified wavenumbers
         self.kxx = np.zeros(self.Nx)
         self.kzz = np.zeros(self.Nz)
@@ -179,18 +176,6 @@ class NSControlEnvMatlab:
             num += 1
         mean_pg = abs(grad_total / num)
         return mean_pg
-    
-    def cal_dpdx_reverse(self, layer_index=-1):
-        dpdx = self.eng.compute_dpdx_reverse(to_m(self.U), to_m(self.V), to_m(self.W), to_m(self.nu), 
-                                             to_m(self.dx), to_m(self.dz), to_m(self.y), to_m(self.yg), 
-                                             to_m(self.Ny))
-        dpdx = np.array(dpdx)  # transfer to numpy array
-        if layer_index == -1:
-            dpdx = (dpdx[:, -1, :] + dpdx[:, -2, :]) / 2  # top pressure
-        else:
-            dpdx = dpdx[:, layer_index, :]
-        dpdx = np.mean(abs(dpdx))
-        return dpdx
 
     def cal_bulk_v(self):
         meanU = self.eng.calculate_meanU(to_m(self.ym), to_m(self.U))
@@ -271,11 +256,7 @@ class NSControlEnvMatlab:
                 relative_dict[new_k] = info[one_k] / self.info_init[one_k]
             return relative_dict
     
-    def get_top_pressure(self):
-        pressure = self.cal_pressure()                    # Next state after taking the action
-        next_state = np.squeeze(-0.5 * (pressure[:, -1, :] + pressure[:, -2, :]))
-        return next_state
-    
+
     '''
     Visualizations
     '''
@@ -315,13 +296,8 @@ class NSControlEnvMatlab:
     
     def plot_spatial_distribution(self, step_index):
         info = {}
-        dpdx = self.eng.compute_dpdx_reverse(to_m(self.U), to_m(self.V), to_m(self.W), to_m(self.nu), 
-                                             to_m(self.dx), to_m(self.dz), to_m(self.y), to_m(self.yg), 
-                                             to_m(self.Ny))
-        dpdx = np.array(dpdx)  # transfer to numpy array
         dudy_all = self.cal_dudy()
-        dpdx_all = abs(dpdx)
-        for chart_key in ['U', 'V', 'W', 'dudy', 'dpdx_reverse']:
+        for chart_key in ['U', 'V', 'W', 'dudy']:
             cur_data = []
             for sample_index in range(30):
                 if chart_key in ['U', 'V', 'W']:
@@ -330,9 +306,6 @@ class NSControlEnvMatlab:
                 elif chart_key == 'dudy':
                     value_name = 'dudy'
                     value = np.mean(abs(dudy_all[-sample_index]))
-                elif chart_key == 'dpdx_reverse':
-                    value_name = 'dpdx_reverse'
-                    value = np.mean(dpdx_all[:, -sample_index, :])
                 else:
                     raise RuntimeError()
                 cur_data.append([sample_index, value])
@@ -349,6 +322,7 @@ class NSControlEnvMatlab:
     '''
     Control policies.
     '''
+    
     def reset_init(self):
         self.info_init = None
     
@@ -364,6 +338,12 @@ class NSControlEnvMatlab:
         opV2 = np.array(opV2)
         return opV1, opV2
 
+    def get_boundary_pressures(self):
+        pressure = self.cal_pressure()                    # Next state after taking the action
+        p1 = np.squeeze(-0.5 * (pressure[:, 0, :] + pressure[:, 1, :]))
+        p2 = np.squeeze(-0.5 * (pressure[:, -1, :] + pressure[:, -2, :]))
+        return p1, p2
+    
     def step_rk3(self, opV1, opV2):
         U, V, W, dPdx = self.eng.time_advance_RK3(to_m(opV1), to_m(opV2), to_m(self.U), to_m(self.V), to_m(self.W), to_m(self.meanU0), to_m(self.nu), to_m(self.dPdx), \
         to_m(self.y), to_m(self.ym), to_m(self.yg), to_m(self.dx), to_m(self.dz), to_m(self.dt), to_m(self.kxx), to_m(self.kzz), \
@@ -376,14 +356,15 @@ class NSControlEnvMatlab:
         # Return the next state, reward, termination flag, and additional info
         prev_U, prev_V, prev_W = self.U.copy(), self.V.copy(), self.W.copy()
         for i in range(2):
-            self.step_rk3(opV1, opV2)
-        pressure_top = self.get_top_pressure()
+            applied_opV1 = opV1 * 0
+            self.step_rk3(applied_opV1, opV2)
+        p1, p2 = self.get_boundary_pressures()
         div = self.reward_div()
-        dpdx_finite_difference = self.cal_dpdx_finite_difference(pressure_top)
+        dpdx_finite_difference = self.cal_dpdx_finite_difference(p2)
         u_velocity = self.cal_bulk_v()
         v_velocity = self.cal_velocity_mean('V', sample_index=None)
         w_velocity = self.cal_velocity_mean('W', sample_index=None)
-        pressure_mean = pressure_top.mean()
+        pressure_mean = p2.mean()
         gt_diff = self.reward_gt()
         speed_diff = self.reward_td(prev_U, prev_V, prev_W)
         speed_norm = self.cal_speed_norm()
@@ -404,4 +385,4 @@ class NSControlEnvMatlab:
                 }
         norm_info = self.cal_relative_info(info)
         info.update(norm_info)
-        return pressure_top, div, done, info
+        return p2, div, done, info

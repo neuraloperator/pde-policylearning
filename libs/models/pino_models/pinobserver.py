@@ -3,7 +3,7 @@ import torch.nn as nn
 from .basics import SpectralConv3d
 from .utils import add_padding, remove_padding, _get_act
 import numpy as np
-from libs.DINo.network import CodeBilinear
+from libs.DINo.network import MultiplicativeNet
 from torch.nn.parameter import Parameter
 import math
 from torch.nn import init
@@ -11,7 +11,7 @@ import torch.nn.functional as F
 from torch import nn, Tensor
 
 
-class CodeBilinear(nn.Module):
+class MultiplicativeNet(nn.Module):
     __constants__ = ['in1_features', 'in2_features', 'out_features']
     in1_features: int
     in2_features: int
@@ -23,7 +23,7 @@ class CodeBilinear(nn.Module):
         x2T A + B x1
         x2: code, x1: spatial coordinates
         """
-        super(CodeBilinear, self).__init__()
+        super(MultiplicativeNet, self).__init__()
         self.in1_features = in1_features
         self.in2_features = in2_features
         self.out_features = out_features
@@ -39,15 +39,16 @@ class CodeBilinear(nn.Module):
         init.uniform_(self.bias, -bound, bound)
 
     def forward(self, input1: Tensor, input2: Tensor) -> Tensor:
-        # input1: b, t, h, w, s, i
-        # input2: b, t, s, j
+        # input1: [N, X, Y, T, O]
+        # input2: [N, O]
         # W: o, i, j
         # B: o, i
         # A: o, j
         # bias: o
         res = 0
-        
-        bias_code = torch.einsum('bj,oj->bo', input2.unsqueeze(-1), self.A)  # [N, O]
+        if len(input2.shape) < 2:
+            input2 = input2.unsqueeze(-1)
+        bias_code = torch.einsum('bj,oj->bo', input2, self.A)  # [N, O]
         bias_code = bias_code.unsqueeze(1).unsqueeze(1).unsqueeze(1) # [N, T, X, Y, O]
 
         linear_trans_2 = torch.einsum('bthwi,oi->bthwo', input1, self.B)  # [N, T, X, Y, O]
@@ -73,8 +74,8 @@ class MFNBase(nn.Module):
         super().__init__()
         self.first = 3
         self.bilinear = nn.ModuleList(
-            [CodeBilinear(in_size, code_size, hidden_size)] +
-            [CodeBilinear(hidden_size, code_size, hidden_size) for _ in range(int(n_layers))]
+            [MultiplicativeNet(in_size, code_size, hidden_size)] +
+            [MultiplicativeNet(hidden_size, code_size, hidden_size) for _ in range(int(n_layers))]
         )
         self.output_bilinear = nn.Linear(hidden_size, out_size)
         return
@@ -97,7 +98,7 @@ class FourierLayer(nn.Module):
     """
     def __init__(self, in_features, out_features, weight_scale):
         super().__init__()
-        self.weight = Parameter(torch.empty((out_features, in_features)))
+        self.weight = Parameter(torch.empty((out_features // 2, in_features)))
         self.weight_scale = weight_scale
         self.reset_parameters()
 
@@ -105,7 +106,8 @@ class FourierLayer(nn.Module):
         init.kaiming_uniform_(self.weight, a=math.sqrt(5))
 
     def forward(self, x):
-        return torch.cat([torch.sin(F.linear(x, self.weight * self.weight_scale)), torch.cos(F.linear(x, self.weight * self.weight_scale))], dim=-1)
+        linear_features = F.linear(x, self.weight * self.weight_scale)
+        return torch.cat([torch.sin(linear_features), torch.cos(linear_features)], dim=-1)
 
 
 class FourierNet(MFNBase):
@@ -134,7 +136,8 @@ class PINObserver2d(nn.Module):
                  layers=None,
                  in_dim=4, out_dim=1,
                  act='gelu', 
-                 pad_ratio=[0., 0.]):
+                 pad_ratio=[0., 0.],
+                 use_fourier_layer=False):
         '''
         Args:
             modes1: list of int, first dimension maximal modes for each layer
@@ -160,15 +163,17 @@ class PINObserver2d(nn.Module):
         self.modes3 = modes3
         self.pad_ratio = pad_ratio
         self.in_dim = in_dim
-        # self.use_tile_add_attach = False
-        # if self.use_tile_add_attach:
-        #     self.in_dim += 1
         if layers is None:
             self.layers = [width] * 4
         else:
             self.layers = layers
         self.fc0 = nn.Linear(self.in_dim, layers[0])
-        self.bilinear_inform = CodeBilinear(in1_features=layers[0], in2_features=1, out_features=layers[0])
+        self.use_fourier_layer = use_fourier_layer
+        if use_fourier_layer:
+            self.fourier_layer1 = FourierLayer(in_features=1, out_features=8, weight_scale=1.0)
+        else:
+            self.fourier_layer1 = None
+        self.multiplicative_net1 = MultiplicativeNet(in1_features=layers[0], in2_features=1, out_features=layers[0])
 
         self.sp_convs = nn.ModuleList([SpectralConv3d(
             in_size, out_size, mode1_num, mode2_num, mode3_num)
@@ -178,7 +183,8 @@ class PINObserver2d(nn.Module):
         self.ws = nn.ModuleList([nn.Conv1d(in_size, out_size, 1)
                                  for in_size, out_size in zip(self.layers, self.layers[1:])])
 
-        self.bilinear_inform2 = CodeBilinear(in1_features=layers[-1], in2_features=1, out_features=layers[-1])
+        self.multiplicative_net2 = MultiplicativeNet(in1_features=layers[-1], in2_features=1, out_features=layers[-1])
+        
         self.fc1 = nn.Linear(layers[-1], fc_dim)
         self.fc2 = nn.Linear(fc_dim, out_dim)
         self.act = _get_act(act)
@@ -193,6 +199,8 @@ class PINObserver2d(nn.Module):
             u: (batchsize, x_grid, y_grid, t_grid, 1)
         '''
         re = re.float()
+        if self.use_fourier_layer:
+            fourier_re = self.fourier_layer1(re.unsqueeze(-1))
         size_z = x.shape[-2]
         if max(self.pad_ratio) > 0:
             num_pad = [round(size_z * i) for i in self.pad_ratio]
@@ -202,7 +210,10 @@ class PINObserver2d(nn.Module):
         batchsize = x.shape[0]
         
         x = self.fc0(x)
-        x = self.bilinear_inform(x, re)
+        if self.use_fourier_layer:
+            x = self.multiplicative_net1(x, fourier_re)
+        else:
+            x = self.multiplicative_net1(x, re)
         x = x.permute(0, 4, 1, 2, 3)
         x = add_padding(x, num_pad=num_pad)
         size_x, size_y, size_z = x.shape[-3], x.shape[-2], x.shape[-1]
@@ -215,7 +226,7 @@ class PINObserver2d(nn.Module):
                 x = self.act(x)
         x = remove_padding(x, num_pad=num_pad)
         x = x.permute(0, 2, 3, 4, 1)
-        x = self.bilinear_inform2(x, re)
+        x = self.multiplicative_net2(x, re)
         x = self.fc1(x)
         x = self.act(x)
         x = self.fc2(x)

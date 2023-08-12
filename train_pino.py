@@ -11,10 +11,9 @@ import numpy as np
 import torch
 from torch.optim import Adam
 from torch.utils.data import DataLoader
-
 from libs.models.pino_models import PINObserver2d
-
 from libs.pino_utils.losses import LpLoss, PINO_loss3d, get_forcing
+from libs.envs.diff_control_env import Channelflow_PINO_loss
 from libs.pino_utils.datasets import MultipleReynoldsKFaDataset, sample_data
 from libs.pino_utils.utils import save_ckpt, count_params, dict2str
 
@@ -101,7 +100,8 @@ def train_ns(model,
             out = model(a, re)
             u0  = a[:, :, :, 0, -1]
             v = 1 / re
-            loss_ic, loss_f = PINO_loss3d(out, u0, forcing, v, t_duration)
+            loss_ic, loss_f = Channelflow_PINO_loss(out, u0, forcing, v, t_duration)
+            # loss_ic, loss_f = PINO_loss3d(out, u0, forcing, v, t_duration)
             log_dict['IC'] = loss_ic.item()
             log_dict['PDE'] = loss_f.item()
         else:
