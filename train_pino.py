@@ -4,11 +4,9 @@ import yaml
 import random
 from argparse import ArgumentParser
 import math
-from tqdm import tqdm
-
-import numpy as np
-
 import torch
+from tqdm import tqdm
+import numpy as np
 from torch.optim import Adam
 from torch.utils.data import DataLoader
 from libs.models.pino_models import PINObserver2d

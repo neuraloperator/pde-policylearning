@@ -6,7 +6,8 @@ from libs.utilities3 import *
 
 
 class PDEDataset(Dataset):
-    def __init__(self, args, data_folder, data_index, downsample_rate, x_range, y_range, use_patch=False):
+    def __init__(self, args, data_folder, data_index, downsample_rate, x_range, y_range, use_patch=False, full_field=False):
+        super().__init__()
         self.data_folder = data_folder
         self.downsample_rate, self.x_range, self.y_range = downsample_rate, x_range, y_range
         self.metadata = np.load(os.path.join(data_folder, 'metadata.npy'), allow_pickle=True).tolist()
@@ -72,26 +73,20 @@ class SequentialPDEDataset(Dataset):
     """
     returns [timestep, height, width, dim] with dim = 1.
     """
-    def __init__(self, args, data_folder, data_index, downsample_rate, x_range, y_range, use_patch=False):
+    def __init__(self, args, data_folder, data_index, downsample_rate, x_range, y_range, use_patch=False, full_field=True):
+        super().__init__()
         self.timestep = args.model_timestep
         self.data_folder = data_folder
+        self.full_field = full_field
         self.downsample_rate, self.x_range, self.y_range = downsample_rate, x_range, y_range
         self.metadata = np.load(os.path.join(data_folder, 'metadata.npy'), allow_pickle=True).tolist()
         self.file_list = os.listdir(data_folder)
-        if 'P_planes' in self.metadata.keys():
-            p_plane_name = 'P_planes'
-            v_plane_name = 'V_planes'
-        elif 'P_plane' in self.metadata.keys():
-            p_plane_name = 'P_plane'
-            v_plane_name = 'V_plane'
-        else:
-            raise RuntimeError("Not recognized key name!")
-        self.p_plane_files = sorted([onef for onef in self.file_list if p_plane_name in onef])
-        self.v_plane_files = sorted([onef for onef in self.file_list if v_plane_name in onef])
-        self.p_plane_mean, self.p_plane_std = self.metadata[p_plane_name]['mean'], self.metadata[p_plane_name]['std']
-        # self.p_plane_max, self.p_plane_min = self.metadata[p_plane_name]['max'], self.metadata[p_plane_name]['min']
-        self.v_plane_mean, self.v_plane_std = self.metadata[v_plane_name]['mean'], self.metadata[v_plane_name]['std']
-        # self.v_plane_max, self.v_plane_min = self.metadata[v_plane_name]['max'], self.metadata[v_plane_name]['min']
+        u_field_name, v_field_name, w_field_name = 'U_field', 'V_field', 'W_field'
+        self.u_field_files = sorted([onef for onef in self.file_list if u_field_name in onef])
+        self.v_field_files = sorted([onef for onef in self.file_list if v_field_name in onef])
+        self.w_field_files = sorted([onef for onef in self.file_list if w_field_name in onef])
+        print("In sequential dataset, the options downsample_rate, x_range and y_range are not supported!")
+        self.v_field_mean, self.v_field_std = self.metadata[v_field_name]['mean'], self.metadata[v_field_name]['std']
         self.data_index = data_index
         self.data_length = len(self.data_index)
         self.use_patch = use_patch
@@ -135,3 +130,48 @@ class SequentialPDEDataset(Dataset):
         sequential_p = torch.stack(sequential_p)
         sequential_v = torch.stack(sequential_v)
         return sequential_p, sequential_v
+
+
+class FullFieldNSDataset(Dataset):
+    """
+    returns [timestep, height, width, dim] with dim = 1.
+    """
+    def __init__(self, args, data_folder, data_index, downsample_rate, x_range, y_range, use_patch=False, full_field=True):
+        super().__init__()
+        self.timestep = args.model_timestep
+        self.data_folder = data_folder
+        self.full_field = full_field
+        self.downsample_rate, self.x_range, self.y_range = downsample_rate, x_range, y_range
+        self.metadata = np.load(os.path.join(data_folder, 'metadata.npy'), allow_pickle=True).tolist()
+        self.re = torch.tensor(self.metadata['re'])
+        self.file_list = os.listdir(data_folder)
+        u_field_name, v_field_name, w_field_name = 'U_field', 'V_field', 'W_field'
+        self.u_field_files = sorted([onef for onef in self.file_list if u_field_name in onef])
+        self.v_field_files = sorted([onef for onef in self.file_list if v_field_name in onef])
+        self.w_field_files = sorted([onef for onef in self.file_list if w_field_name in onef])
+        print("In sequential dataset, the options downsample_rate, x_range and y_range are not supported.")
+        self.bound_v_mean, self.bound_v_std = self.metadata[v_field_name]['mean'][:, 0, :], self.metadata[v_field_name]['std'][:, 0, :]
+        self.v_field_mean, self.v_field_std = self.metadata[v_field_name]['mean'][:, 1:-1, :], self.metadata[v_field_name]['std'][:, 1:-1, :]
+        self.data_index = data_index
+        self.data_length = len(self.data_index)
+        self.bound_v_norm = NormalizerGivenMeanStd(self.bound_v_mean, self.bound_v_std)
+        self.v_field_norm = NormalizerGivenMeanStd(self.v_field_mean, self.v_field_std)
+        
+    def __len__(self):
+        return self.data_length // self.timestep
+
+    def __getitem__(self, index):
+        seq_v_plane, seq_v_field = [], []
+        for cur_t in range(self.timestep):
+            cur_index = self.data_index[index * self.timestep + cur_t]
+            v_field = np.load(os.path.join(self.data_folder, self.v_field_files[cur_index]))
+            v_field = torch.tensor(v_field)
+            v_plane = self.bound_v_norm.encode(v_field[:, -1, :])
+            v_field = self.v_field_norm.encode(v_field[:, 1:-1, :])
+            v_plane = torch.tensor(v_plane)
+            v_field = torch.tensor(v_field)
+            seq_v_plane.append(v_plane)
+            seq_v_field.append(v_field)
+        seq_v_plane = torch.stack(seq_v_plane)  # [1, 32, 32]
+        seq_v_field = torch.stack(seq_v_field)  # [1, 32, 128, 32]
+        return seq_v_plane, seq_v_field, self.re

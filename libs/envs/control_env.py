@@ -356,7 +356,7 @@ class NSControlEnvMatlab:
         # Return the next state, reward, termination flag, and additional info
         prev_U, prev_V, prev_W = self.U.copy(), self.V.copy(), self.W.copy()
         for i in range(2):
-            applied_opV1 = opV1 * 0
+            applied_opV1 = opV1 * 0  # apply half control
             self.step_rk3(applied_opV1, opV2)
         p1, p2 = self.get_boundary_pressures()
         div = self.reward_div()

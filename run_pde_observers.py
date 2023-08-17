@@ -1,7 +1,3 @@
-"""
-@author: Zongyi Li
-This file is the Fourier Neural Operator for the 2D Navier—Stokes problem discussed in Section 5.3 in the [paper](https://arxiv.org/pdf/2010.08895.pdf).
-"""
 import wandb
 import math
 import numpy as np
@@ -13,6 +9,7 @@ from libs.utilities3 import *
 from libs.unet_models import *
 from libs.models.fno_models import *
 from libs.models.rno_models import RNO2dObserver
+from libs.models.pino_models import PINObserverFullField
 from libs.models.transformer_models import *
 from libs.visualization import *
 from libs.pde_data_loader import *
@@ -43,19 +40,25 @@ def main(args, sample_data=False, train_shuffle=True):
         control(args, model=None, wandb_exist=False)
         return
     args.using_transformer = 'Transformer' in args.model_name
-    assert args.model_name in ['UNet', 'RNO2dObserver', 'FNO2dObserverOld', 'FNO2dObserver', 'Transformer2D'],  "Model not supported!"
+    assert args.model_name in ['UNet', 'RNO2dObserver', 'PINObserverFullField', 'FNO2dObserverOld', 'FNO2dObserver', 'Transformer2D'],  "Model not supported!"
+    
+    '''
+    Make dataset
+    '''
     if args.random_split:
         idx = torch.randperm(args.ntrain + args.ntest)
     else:
         idx = torch.arange(args.ntrain + args.ntest)
     training_idx = idx[:args.ntrain]
     testing_idx = idx[-args.ntest:]
-    if args.recurrent_model:
+    if args.dataset_name == 'SequentialPDEDataset':
         dataset_fn = SequentialPDEDataset
+    elif args.dataset_name == "FullFieldNSDataset":
+        dataset_fn = FullFieldNSDataset
     else:
         dataset_fn = PDEDataset
-    train_dataset = dataset_fn(args, args.DATA_FOLDER, training_idx, args.downsample_rate, args.x_range, args.y_range, use_patch=args.use_patch)
-    test_dataset = dataset_fn(args, args.DATA_FOLDER, testing_idx, args.downsample_rate, args.x_range, args.y_range, use_patch=args.use_patch)
+    train_dataset = dataset_fn(args, args.DATA_FOLDER, training_idx, args.downsample_rate, args.x_range, args.y_range, use_patch=args.use_patch, full_field=args.full_field)
+    test_dataset = dataset_fn(args, args.DATA_FOLDER, testing_idx, args.downsample_rate, args.x_range, args.y_range, use_patch=args.use_patch, full_field=args.full_field)
     if sample_data:
         p_plane, v_plane = train_dataset[0]
         p_plane, v_plane = p_plane.cuda(), v_plane.cuda()
@@ -76,6 +79,10 @@ def main(args, sample_data=False, train_shuffle=True):
         model = FNO2dObserver(args.modes, args.modes, args.width, use_v_plane=args.use_v_plane).cuda()
     elif args.model_name == 'RNO2dObserver':
         model = RNO2dObserver(args.modes, args.modes, args.width, recurrent_index=args.recurrent_index, layer_num=args.layer_num).cuda()
+    elif args.model_name == 'PINObserverFullField':
+        all_modes = [args.modes, args.modes, args.modes, args.modes]
+        model = PINObserverFullField(modes1=all_modes, modes2=all_modes, modes3=all_modes, fc_dim=128, layers=[64, 64, 64, 64, 64], 
+                                     act='gelu', pad_ratio=0.0625, in_dim=1, ).cuda()
     elif args.model_name == 'UNet':
         model = UNet(use_spectral_conv=args.use_spectral_conv).cuda()
     elif args.model_name == 'Transformer2D':
@@ -123,77 +130,117 @@ def main(args, sample_data=False, train_shuffle=True):
         model.train()
         t1 = default_timer()
         train_l2, train_num = 0, 0
-        for step, (p_plane, v_plane) in enumerate(tqdm(train_loader)):
-            p_plane, v_plane = p_plane.cuda().float(), v_plane.cuda().float()
-            if args.recurrent_model:
-                p_plane = p_plane.reshape(-1, args.model_timestep, args.x_range, args.y_range, 1)
-                v_plane = v_plane.reshape(-1, args.model_timestep, args.x_range, args.y_range, 1)
-                v_plane = v_plane[:, args.recurrent_index, :, :, :]  # select the predict element
-                args.batch_size = v_plane.shape[0]
-            elif args.using_transformer:
-                p_plane = p_plane.reshape(-1, args.model_timestep, args.x_range, args.y_range, 1)
-            else:
-                p_plane = p_plane.reshape(-1, args.x_range, args.y_range, 1)
-                v_plane = v_plane.reshape(-1, args.x_range, args.y_range, 1)
-            train_num += len(v_plane)
-            optimizer.zero_grad()
-            out = model(p_plane, v_plane)
-            out = out.reshape(-1, args.x_range, args.y_range)
-            out_decoded = train_dataset.v_norm.cuda_decode(out)
-            v_plane = v_plane.squeeze()
-            v_plane_decoded = train_dataset.v_norm.cuda_decode(v_plane)
-            # loss = myloss(out.view(args.batch_size, -1), v_plane.view(args.batch_size, -1))
-            loss = myloss(out_decoded.view(args.batch_size, -1), v_plane_decoded.view(args.batch_size, -1))
-            loss.backward()
-            optimizer.step()
-            train_l2 += loss.item()
-            metrics = {"train/train_loss": loss.item(), 
-                    "train/epoch": (step + 1 + (n_steps_per_epoch * ep)) / n_steps_per_epoch}
-            if step + 1 < n_steps_per_epoch and not args.close_wandb:
-                # Log train metrics to wandb 
-                wandb.log(metrics)
-
-        model.eval()
-        test_l2, test_num = 0.0, 0
-        with torch.no_grad():
-            for p_plane, v_plane in test_loader:
+        if args.dataset_name == "SequentialPDEDataset":
+            for step, (p_plane, v_plane) in enumerate(tqdm(train_loader)):
                 p_plane, v_plane = p_plane.cuda().float(), v_plane.cuda().float()
                 if args.recurrent_model:
                     p_plane = p_plane.reshape(-1, args.model_timestep, args.x_range, args.y_range, 1)
                     v_plane = v_plane.reshape(-1, args.model_timestep, args.x_range, args.y_range, 1)
-                    v_plane = v_plane[:, args.recurrent_index, :, :, :]
+                    v_plane = v_plane[:, args.recurrent_index, :, :, :]  # select the predict element
                     args.batch_size = v_plane.shape[0]
                 elif args.using_transformer:
                     p_plane = p_plane.reshape(-1, args.model_timestep, args.x_range, args.y_range, 1)
                 else:
                     p_plane = p_plane.reshape(-1, args.x_range, args.y_range, 1)
                     v_plane = v_plane.reshape(-1, args.x_range, args.y_range, 1)
-                test_num += len(v_plane)
+                train_num += len(v_plane)
+                optimizer.zero_grad()
                 out = model(p_plane, v_plane)
                 out = out.reshape(-1, args.x_range, args.y_range)
-                if args.using_transformer:
-                    p_plane = p_plane.reshape(-1, args.x_range, args.y_range, 1)
-                elif args.recurrent_model:
-                    p_plane = p_plane[:, args.recurrent_index, :, :, :]
                 out_decoded = train_dataset.v_norm.cuda_decode(out)
                 v_plane = v_plane.squeeze()
-                p_plane_decoded = train_dataset.p_norm.cuda_decode(p_plane)
                 v_plane_decoded = train_dataset.v_norm.cuda_decode(v_plane)
-                # test_loss = myloss(out.view(args.batch_size, -1), v_plane.view(args.batch_size, -1)).item()
-                test_loss = myloss(out_decoded.view(args.batch_size, -1), v_plane_decoded.view(args.batch_size, -1)).item()
-                test_l2 += test_loss
-                test_metrics = {"test/test_loss": test_loss / args.batch_size}
-                if not args.close_wandb:
-                    wandb.log(test_metrics)
+                # loss = myloss(out.view(args.batch_size, -1), v_plane.view(args.batch_size, -1))
+                loss = myloss(out_decoded.view(args.batch_size, -1), v_plane_decoded.view(args.batch_size, -1))
+                loss.backward()
+                optimizer.step()
+                train_l2 += loss.item()
+                metrics = {"train/train_loss": loss.item(), 
+                        "train/epoch": (step + 1 + (n_steps_per_epoch * ep)) / n_steps_per_epoch}
+                if step + 1 < n_steps_per_epoch and not args.close_wandb:
+                    # Log train metrics to wandb 
+                    wandb.log(metrics)
+        elif args.dataset_name == 'FullFieldNSDataset':
+            for step, (v_plane, v_field, re) in enumerate(tqdm(train_loader)):
+                v_plane, v_field, re = v_plane.cuda().float(), v_field.cuda().float(), re.cuda().float()
+                v_plane = torch.einsum('btxy -> bxyt', v_plane).unsqueeze(-1)
+                train_num += len(v_plane)
+                optimizer.zero_grad()
+                out = model(v_plane, re)
+                out = torch.einsum('bxztk -> btxz', out)
+                out_decoded = train_dataset.bound_v_norm.cuda_decode(out)
+                target_plane_index = 10
+                v_field_decoded = train_dataset.v_field_norm.cuda_decode(v_field)
+                target = v_field_decoded[:, :, :, target_plane_index, :]
+                loss = myloss(out_decoded.reshape(args.batch_size, -1), target.reshape(args.batch_size, -1))
+                loss.backward()
+                optimizer.step()
+                train_l2 += loss.item()
+                metrics = {"train/train_loss": loss.item(), 
+                        "train/epoch": (step + 1 + (n_steps_per_epoch * ep)) / n_steps_per_epoch}
+                if step + 1 < n_steps_per_epoch and not args.close_wandb:
+                    # Log train metrics to wandb 
+                    wandb.log(metrics)            
+
+        model.eval()
+        test_l2, test_num = 0.0, 0
+        with torch.no_grad():
+            if args.dataset_name == "SequentialPDEDataset":
+                for p_plane, v_plane in test_loader:
+                    p_plane, v_plane = p_plane.cuda().float(), v_plane.cuda().float()
+                    if args.recurrent_model:
+                        p_plane = p_plane.reshape(-1, args.model_timestep, args.x_range, args.y_range, 1)
+                        v_plane = v_plane.reshape(-1, args.model_timestep, args.x_range, args.y_range, 1)
+                        v_plane = v_plane[:, args.recurrent_index, :, :, :]
+                        args.batch_size = v_plane.shape[0]
+                    elif args.using_transformer:
+                        p_plane = p_plane.reshape(-1, args.model_timestep, args.x_range, args.y_range, 1)
+                    else:
+                        p_plane = p_plane.reshape(-1, args.x_range, args.y_range, 1)
+                        v_plane = v_plane.reshape(-1, args.x_range, args.y_range, 1)
+                    test_num += len(v_plane)
+                    out = model(p_plane, v_plane)
+                    out = out.reshape(-1, args.x_range, args.y_range)
+                    if args.using_transformer:
+                        p_plane = p_plane.reshape(-1, args.x_range, args.y_range, 1)
+                    elif args.recurrent_model:
+                        p_plane = p_plane[:, args.recurrent_index, :, :, :]
+                    out_decoded = train_dataset.v_norm.cuda_decode(out)
+                    v_plane = v_plane.squeeze()
+                    p_plane_decoded = train_dataset.p_norm.cuda_decode(p_plane)
+                    v_plane_decoded = train_dataset.v_norm.cuda_decode(v_plane)
+                    # test_loss = myloss(out.view(args.batch_size, -1), v_plane.view(args.batch_size, -1)).item()
+                    test_loss = myloss(out_decoded.view(args.batch_size, -1), v_plane_decoded.view(args.batch_size, -1)).item()
+                    test_l2 += test_loss
+                    test_metrics = {"test/test_loss": test_loss / args.batch_size}
+                    if not args.close_wandb:
+                        wandb.log(test_metrics)
+            elif args.dataset_name == 'FullFieldNSDataset':
+                for step, (v_plane, v_field, re) in enumerate(tqdm(train_loader)):
+                    v_plane, v_field, re = v_plane.cuda().float(), v_field.cuda().float(), re.cuda().float()
+                    v_plane = torch.einsum('btxy -> bxyt', v_plane).unsqueeze(-1)
+                    test_num += len(v_plane)
+                    out = model(v_plane, re)
+                    out = torch.einsum('bxztk -> btxz', out)
+                    out_decoded = train_dataset.bound_v_norm.cuda_decode(out)
+                    target_plane_index = 10
+                    v_field_decoded = train_dataset.v_field_norm.cuda_decode(v_field)
+                    target = v_field_decoded[:, :, :, target_plane_index, :]
+                    test_loss = myloss(out_decoded.reshape(args.batch_size, -1), target.reshape(args.batch_size, -1)).item()
+                    test_l2 += test_loss
+                    test_metrics = {"test/test_loss": test_loss / args.batch_size}
+                    if not args.close_wandb:
+                        wandb.log(test_metrics)
 
         train_l2/= train_num
         test_l2 /= test_num
         t2 = default_timer()
         if test_l2 < best_loss:
             best_loss = test_l2
-            dat = {'x': p_plane_decoded.cpu().numpy(), 'pred': out_decoded.cpu().numpy(), 'y': v_plane_decoded.cpu().numpy(),}
-            if not args.close_wandb:
-                vis_diagram(dat)
+            if args.dataset_name == "SequentialPDEDataset":
+                dat = {'x': p_plane_decoded.cpu().numpy(), 'pred': out_decoded.cpu().numpy(), 'y': v_plane_decoded.cpu().numpy(),}
+                if not args.close_wandb:
+                    vis_diagram(dat)
             model_save_p = f"./outputs/{args.path_name}_{args.exp_name}.pth"
             torch.save(model, model_save_p)
             print(f"Best model saved at {model_save_p}!")

@@ -158,6 +158,8 @@ def main(args, model=None, wandb_exist=False):
         
         if args.collect_data and i > args.collect_start:
             idx_str = str(i).zfill(6)
+            # (0) save Reynold numbers
+            metadata['re'] = args.Re
             # (1) save boundary pressure
             p1, p2 = p1.astype(np.float64), p2.astype(np.float64)
             opV1, opV2 = opV1.astype(np.float64), opV2.astype(np.float64)

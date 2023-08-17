@@ -1,10 +1,9 @@
-DATA_FOLDER: './outputs/61-revise-boundary'
-ntrain: 180
+DATA_FOLDER: './outputs/61-revise-boundary-with-reynolds'
+ntrain: 280
 ntest: 20
 project_name: 'control_v2'
-exp_name: '61-revise-boundary'
+exp_name: '61-revise-boundary-with-reynolds'
 path_name: planes_channel180_minchan
-model_name: RNO2dObserver
 display_variables:
   - exp_name
   - bc_type
@@ -12,8 +11,17 @@ display_variables:
   - control_timestep
   - model_timestep
 
-# control setups
+# # control setups: opposition control
+# env_name: NSControlEnvMatlab
+# model_name: RNO2dObserver
+# dataset_name: SequentialPDEDataset
+
+# control setups: optimal control
 env_name: NSControlEnvMatlab
+model_name: PINObserverFullField
+dataset_name: FullFieldNSDataset
+
+# other control settings
 init_cond_path: ./data/channel180_minchan.mat  # original
 # init_cond_path: ./outputs/flow_900.npy  # will increase drag
 vis_sample_img: false
@@ -24,7 +32,7 @@ w_weight: 0.0
 x_range: 32
 y_range: 32
 fix_flow: true
-Re: 500
+Re: 180
 bc_type: original
 
 # policy setups
@@ -38,7 +46,7 @@ rand_scale: 1
 reward_type: mse
 collect_data: true  # collect dataset
 collect_start: 0  # wait for some initialization steps
-# collect_full_field: true # true
+full_field: true  # predict the full velocity field
 dump_state: false  # used to produce different initialization conditions
 
 # learning settings
