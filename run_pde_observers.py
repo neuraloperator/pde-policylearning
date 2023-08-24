@@ -30,6 +30,7 @@ def main(args, sample_data=False, train_shuffle=True):
         policy_list = args.policy_name[:]
         for policy_name in policy_list:  # compare different methods
             args.policy_name = policy_name
+            # running another policy
             main(args, sample_data=sample_data, train_shuffle=train_shuffle)
         return
     if args.policy_name in ['unmanipulated', 'gt', 'rand']:
@@ -37,14 +38,15 @@ def main(args, sample_data=False, train_shuffle=True):
     else:
         args.control_only = False
     if args.control_only:
-        control(args, model=None, wandb_exist=False)
+        control(args, observer_model=None, wandb_exist=False)
         return
     args.using_transformer = 'Transformer' in args.model_name
     assert args.model_name in ['UNet', 'RNO2dObserver', 'PINObserverFullField', 'FNO2dObserverOld', 'FNO2dObserver', 'Transformer2D'],  "Model not supported!"
     
-    '''
-    Make dataset
-    '''
+    ################################################################
+    # make dataset
+    ################################################################
+    
     if args.random_split:
         idx = torch.randperm(args.ntrain + args.ntest)
     else:
@@ -71,29 +73,39 @@ def main(args, sample_data=False, train_shuffle=True):
     n_steps_per_epoch = math.ceil(len(train_loader.dataset) / args.batch_size)
 
     ################################################################
-    # create model
+    # create observer model
     ################################################################
     if args.model_name == 'FNO2dObserverOld':
-        model = FNO2dObserverOld(args.modes, args.modes, args.width, use_v_plane=args.use_v_plane).cuda()
+        observer_model = FNO2dObserverOld(args.modes, args.modes, args.width, use_v_plane=args.use_v_plane).cuda()
     elif args.model_name == 'FNO2dObserver':
-        model = FNO2dObserver(args.modes, args.modes, args.width, use_v_plane=args.use_v_plane).cuda()
+        observer_model = FNO2dObserver(args.modes, args.modes, args.width, use_v_plane=args.use_v_plane).cuda()
     elif args.model_name == 'RNO2dObserver':
-        model = RNO2dObserver(args.modes, args.modes, args.width, recurrent_index=args.recurrent_index, layer_num=args.layer_num).cuda()
+        observer_model = RNO2dObserver(args.modes, args.modes, args.width, recurrent_index=args.recurrent_index, layer_num=args.layer_num).cuda()
     elif args.model_name == 'PINObserverFullField':
         all_modes = [args.modes, args.modes, args.modes, args.modes]
-        model = PINObserverFullField(modes1=all_modes, modes2=all_modes, modes3=all_modes, fc_dim=128, layers=[64, 64, 64, 64, 64], 
+        observer_model = PINObserverFullField(modes1=all_modes, modes2=all_modes, modes3=all_modes, fc_dim=128, layers=[64, 64, 64, 64, 64], 
                                      act='gelu', pad_ratio=0.0625, in_dim=1, ).cuda()
     elif args.model_name == 'UNet':
-        model = UNet(use_spectral_conv=args.use_spectral_conv).cuda()
+        observer_model = UNet(use_spectral_conv=args.use_spectral_conv).cuda()
     elif args.model_name == 'Transformer2D':
-        model = SimpleTransformer(**args.model).cuda()
+        observer_model = SimpleTransformer(**args.model).cuda()
     else:
         raise NotImplementedError("Model not supported!")
 
     ################################################################
+    # create policy model
+    ################################################################
+    if args.policy_name == 'optimal-observer':
+        policy_model = None
+    elif args.policy_name in ['gt', 'rand', 'unmanipulated', 'rno', 'fno']:
+        policy_model = None
+    else:
+        raise RuntimeError()
+    
+    ################################################################
     # training and evaluation
     ################################################################
-    optimizer = Adam(model.parameters(), lr=args.learning_rate, weight_decay=args.weight_decay)
+    optimizer = Adam(observer_model.parameters(), lr=args.learning_rate, weight_decay=args.weight_decay)
     output_path = './outputs/'
     output_path += args.path_name
     output_path += '_observer.mat'
@@ -127,7 +139,7 @@ def main(args, sample_data=False, train_shuffle=True):
 
     best_loss = 10000000000000
     for ep in tqdm(range(args.epochs)):
-        model.train()
+        observer_model.train()
         t1 = default_timer()
         train_l2, train_num = 0, 0
         if args.dataset_name == "SequentialPDEDataset":
@@ -145,7 +157,7 @@ def main(args, sample_data=False, train_shuffle=True):
                     v_plane = v_plane.reshape(-1, args.x_range, args.y_range, 1)
                 train_num += len(v_plane)
                 optimizer.zero_grad()
-                out = model(p_plane, v_plane)
+                out = observer_model(p_plane, v_plane)
                 out = out.reshape(-1, args.x_range, args.y_range)
                 out_decoded = train_dataset.v_norm.cuda_decode(out)
                 v_plane = v_plane.squeeze()
@@ -166,7 +178,7 @@ def main(args, sample_data=False, train_shuffle=True):
                 v_plane = torch.einsum('btxy -> bxyt', v_plane).unsqueeze(-1)
                 train_num += len(v_plane)
                 optimizer.zero_grad()
-                out = model(v_plane, re)
+                out = observer_model(v_plane, re)
                 out = torch.einsum('bxztk -> btxz', out)
                 out_decoded = train_dataset.bound_v_norm.cuda_decode(out)
                 target_plane_index = 10
@@ -182,7 +194,7 @@ def main(args, sample_data=False, train_shuffle=True):
                     # Log train metrics to wandb 
                     wandb.log(metrics)            
 
-        model.eval()
+        observer_model.eval()
         test_l2, test_num = 0.0, 0
         with torch.no_grad():
             if args.dataset_name == "SequentialPDEDataset":
@@ -199,7 +211,7 @@ def main(args, sample_data=False, train_shuffle=True):
                         p_plane = p_plane.reshape(-1, args.x_range, args.y_range, 1)
                         v_plane = v_plane.reshape(-1, args.x_range, args.y_range, 1)
                     test_num += len(v_plane)
-                    out = model(p_plane, v_plane)
+                    out = observer_model(p_plane, v_plane)
                     out = out.reshape(-1, args.x_range, args.y_range)
                     if args.using_transformer:
                         p_plane = p_plane.reshape(-1, args.x_range, args.y_range, 1)
@@ -220,7 +232,7 @@ def main(args, sample_data=False, train_shuffle=True):
                     v_plane, v_field, re = v_plane.cuda().float(), v_field.cuda().float(), re.cuda().float()
                     v_plane = torch.einsum('btxy -> bxyt', v_plane).unsqueeze(-1)
                     test_num += len(v_plane)
-                    out = model(v_plane, re)
+                    out = observer_model(v_plane, re)
                     out = torch.einsum('bxztk -> btxz', out)
                     out_decoded = train_dataset.bound_v_norm.cuda_decode(out)
                     target_plane_index = 10
@@ -242,7 +254,7 @@ def main(args, sample_data=False, train_shuffle=True):
                 if not args.close_wandb:
                     vis_diagram(dat)
             model_save_p = f"./outputs/{args.path_name}_{args.exp_name}.pth"
-            torch.save(model, model_save_p)
+            torch.save(observer_model, model_save_p)
             print(f"Best model saved at {model_save_p}!")
         print(f"epoch: {ep}, time passed: {t2-t1}, train loss: {train_l2}, test loss: {test_l2}, best loss: {best_loss}.")
         avg_metrics = {
@@ -253,9 +265,9 @@ def main(args, sample_data=False, train_shuffle=True):
         
         if not args.close_wandb:
             wandb.log(avg_metrics)
-            
+    
     print("Running control")
-    control(args, model, wandb_exist=True)
+    control(args, observer_model, wandb_exist=True)
     if not args.close_wandb:
         vis_diagram(dat)
         wandb.finish()

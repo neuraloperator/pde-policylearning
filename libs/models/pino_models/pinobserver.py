@@ -233,6 +233,46 @@ class PINObserver2d(nn.Module):
         return x
     
 
+class PlanePredHead(nn.Module):
+    def __init__(self, layers, modes1, modes2, modes3, fc_dim, out_dim, act):
+        super(PlanePredHead, self).__init__()
+        
+        self.layers = layers
+        self.modes1 = modes1
+        self.modes2 = modes2
+        self.modes3 = modes3
+        
+        self.sp_convs = nn.ModuleList([SpectralConv3d(
+            in_size, out_size, mode1_num, mode2_num, mode3_num)
+            for in_size, out_size, mode1_num, mode2_num, mode3_num
+            in zip(self.layers, self.layers[1:], self.modes1, self.modes2, self.modes3)])
+        
+        self.ws = nn.ModuleList([nn.Conv1d(in_size, out_size, 1)
+                                 for in_size, out_size in zip(self.layers, self.layers[1:])])
+        
+        self.fc1 = nn.Linear(layers[-1], fc_dim)
+        self.fc2 = nn.Linear(fc_dim, out_dim)
+        self.act = _get_act(act)
+    
+    def forward(self, x, num_pad, re, multiplicative_net2):
+        length = len(self.ws)
+        size_x, size_y, size_z = x.shape[-3], x.shape[-2], x.shape[-1]
+        batchsize = x.shape[0]
+        for i, (speconv, w) in enumerate(zip(self.sp_convs, self.ws)):
+            x1 = speconv(x)
+            x2 = w(x.view(batchsize, self.layers[i], -1)).view(batchsize, self.layers[i+1], size_x, size_y, size_z)
+            x = x1 + x2
+            if i != length - 1:
+                x = self.act(x)
+        x = remove_padding(x, num_pad=num_pad)
+        x = x.permute(0, 2, 3, 4, 1)
+        x = multiplicative_net2(x, re)
+        x = self.fc1(x)
+        x = self.act(x)
+        x = self.fc2(x)
+        return x
+
+
 class PINObserverFullField(nn.Module):
     def __init__(self, 
                  modes1, 
@@ -281,20 +321,19 @@ class PINObserverFullField(nn.Module):
         else:
             self.fourier_layer1 = None
         self.multiplicative_net1 = MultiplicativeNet(in1_features=layers[0], in2_features=1, out_features=layers[0])
-
-        self.sp_convs = nn.ModuleList([SpectralConv3d(
-            in_size, out_size, mode1_num, mode2_num, mode3_num)
-            for in_size, out_size, mode1_num, mode2_num, mode3_num
-            in zip(self.layers, self.layers[1:], self.modes1, self.modes2, self.modes3)])
-
-        self.ws = nn.ModuleList([nn.Conv1d(in_size, out_size, 1)
-                                 for in_size, out_size in zip(self.layers, self.layers[1:])])
-
         self.multiplicative_net2 = MultiplicativeNet(in1_features=layers[-1], in2_features=1, out_features=layers[-1])
-        
-        self.fc1 = nn.Linear(layers[-1], fc_dim)
-        self.fc2 = nn.Linear(fc_dim, out_dim)
-        self.act = _get_act(act)
+
+        self.pred_net = PlanePredHead(layers=layers, modes1=self.modes1, modes2=self.modes2, modes3=self.modes3, 
+                                      fc_dim=fc_dim, out_dim=out_dim, act=act)
+        # self.sp_convs = nn.ModuleList([SpectralConv3d(
+        #     in_size, out_size, mode1_num, mode2_num, mode3_num)
+        #     for in_size, out_size, mode1_num, mode2_num, mode3_num
+        #     in zip(self.layers, self.layers[1:], self.modes1, self.modes2, self.modes3)])
+        # self.ws = nn.ModuleList([nn.Conv1d(in_size, out_size, 1)
+        #                          for in_size, out_size in zip(self.layers, self.layers[1:])])
+        # self.fc1 = nn.Linear(layers[-1], fc_dim)
+        # self.fc2 = nn.Linear(fc_dim, out_dim)
+        # self.act = _get_act(act)
 
     def forward(self, x, re):
         '''
@@ -313,7 +352,7 @@ class PINObserverFullField(nn.Module):
             num_pad = [round(size_z * i) for i in self.pad_ratio]
         else:
             num_pad = [0., 0.]
-        length = len(self.ws)
+        # length = len(self.ws)
         batchsize = x.shape[0]
         
         x = self.fc0(x)
@@ -323,18 +362,20 @@ class PINObserverFullField(nn.Module):
             x = self.multiplicative_net1(x, re)
         x = x.permute(0, 4, 1, 2, 3)
         x = add_padding(x, num_pad=num_pad)
-        size_x, size_y, size_z = x.shape[-3], x.shape[-2], x.shape[-1]
-
-        for i, (speconv, w) in enumerate(zip(self.sp_convs, self.ws)):
-            x1 = speconv(x)
-            x2 = w(x.view(batchsize, self.layers[i], -1)).view(batchsize, self.layers[i+1], size_x, size_y, size_z)
-            x = x1 + x2
-            if i != length - 1:
-                x = self.act(x)
-        x = remove_padding(x, num_pad=num_pad)
-        x = x.permute(0, 2, 3, 4, 1)
-        x = self.multiplicative_net2(x, re)
-        x = self.fc1(x)
-        x = self.act(x)
-        x = self.fc2(x)
-        return x
+        
+        res_plane = self.pred_net(x, num_pad, re, self.multiplicative_net2)
+        return res_plane
+        # size_x, size_y, size_z = x.shape[-3], x.shape[-2], x.shape[-1]
+        # for i, (speconv, w) in enumerate(zip(self.sp_convs, self.ws)):
+        #     x1 = speconv(x)
+        #     x2 = w(x.view(batchsize, self.layers[i], -1)).view(batchsize, self.layers[i+1], size_x, size_y, size_z)
+        #     x = x1 + x2
+        #     if i != length - 1:
+        #         x = self.act(x)
+        # x = remove_padding(x, num_pad=num_pad)
+        # x = x.permute(0, 2, 3, 4, 1)
+        # x = self.multiplicative_net2(x, re)
+        # x = self.fc1(x)
+        # x = self.act(x)
+        # x = self.fc2(x)
+        # return x

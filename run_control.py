@@ -18,17 +18,22 @@ from libs.arguments import *
 # from libs.rk_algorithm import *
 from tqdm import tqdm
 import os
+import torch.optim as optim
 
 
-def main(args, model=None, wandb_exist=False):
+def main(args, observer_model=None, wandb_exist=False):
     '''
     Policy settings.
     '''
+    if observer_model is not None:
+        device = next(observer_model.parameters()).device
+    else:
+        device = None
     args.vis_interval = max(args.control_timestep // args.vis_frame, 1) if args.vis_frame > 0 else -1
     if args.policy_name == 'fno' or args.policy_name == 'rno':
-        if model is None:
+        if observer_model is None:
             print("Loading model.")
-            model = torch.load(os.path.join(args.output_dir, args.load_model_name)).cuda()
+            observer_model = torch.load(os.path.join(args.output_dir, args.load_model_name)).cuda()
             print("Model loaded!")
     elif args.policy_name == 'rand':
         args.display_variables.append('rand_scale')
@@ -80,6 +85,7 @@ def main(args, model=None, wandb_exist=False):
         # define metrics
         wandb.define_metric("control_timestep")
         wandb.define_metric("drag_reduction/*", step_metric="control_timestep")
+        wandb.define_metric("drag_reduction_relative/*", step_metric="control_timestep")
         
     '''
     Create env.
@@ -127,12 +133,12 @@ def main(args, model=None, wandb_exist=False):
             opV2 = control_env.rand_control()
             opV2 *= args.rand_scale
         elif args.policy_name == 'fno':
-            opV2 = model(side_pressure, None).reshape(-1, args.x_range, args.y_range)
+            opV2 = observer_model(side_pressure, None).reshape(-1, args.x_range, args.y_range)
             opV2 = demo_dataset.p_norm.decode(opV2.cpu())
             opV2 = opV2.detach().numpy().squeeze()
         elif args.policy_name == 'rno':
             side_pressure = side_pressure.reshape(-1, 1, args.x_range, args.y_range, 1)
-            opV2 = model(side_pressure, None).squeeze()
+            opV2 = observer_model(side_pressure, None).squeeze()
             opV2 = demo_dataset.p_norm.decode(opV2.cpu())
             opV2 = opV2.detach().numpy().squeeze()
             opV1 = opV2 * 0
@@ -143,6 +149,27 @@ def main(args, model=None, wandb_exist=False):
             opV1, opV2 = control_env.gt_control()
             opV1 *= 0
             opV2 *= 0
+        elif args.policy_name == 'optimal-observer':
+            opV1, opV2 = control_env.gt_control()   # one-side control
+            opV2 = torch.tensor(opV2).float().to(device).unsqueeze(0).unsqueeze(0)
+            opV2 = torch.einsum('btxy -> bxyt', opV2).unsqueeze(-1)  # expand feature dim
+            re = torch.tensor(control_env.Re).to(device).unsqueeze(0)
+            
+            # Instantiate the optimizer
+            optimizer = optim.Adam([opV2], lr=0.001)  # You can adjust the learning rate
+            pred_v_field = observer_model(opV2, re)
+            opV2.requires_grad = True
+            reg_weight = 0.1
+            initial_loss = torch.norm(pred_v_field) + reg_weight * torch.norm(opV2) # minimize this.
+            # print("Initial Loss:", initial_loss.item())
+            num_epochs = 10
+            for epoch in range(num_epochs):
+                optimizer.zero_grad()  # Zero the gradients
+                pred_v_field = observer_model(opV2, re)  # Forward pass
+                loss = torch.norm(pred_v_field) + reg_weight * torch.norm(opV2) # minimize this.
+                loss.backward()  # Backpropagation
+                optimizer.step()  # Update the parameters
+            opV2 = opV2.detach().cpu().numpy().squeeze()
         else:
             raise RuntimeError("Not supported policy name.")
         if i == 0 and args.policy_name == 'unmanipulated':   # remove jitter at beginning
