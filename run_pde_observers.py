@@ -9,7 +9,7 @@ from libs.utilities3 import *
 from libs.unet_models import *
 from libs.models.fno_models import *
 from libs.models.rno_models import RNO2dObserver
-from libs.models.pino_models import PINObserverFullField
+from libs.models.pino_models import PINObserverFullField, PolicyModel2D
 from libs.models.transformer_models import *
 from libs.visualization import *
 from libs.pde_data_loader import *
@@ -99,6 +99,10 @@ def main(args, sample_data=False, train_shuffle=True):
         policy_model = None
     elif args.policy_name in ['gt', 'rand', 'unmanipulated', 'rno', 'fno']:
         policy_model = None
+    elif args.policy_name == 'optimal-policy-observer':
+        all_modes = [args.modes, args.modes, args.modes, args.modes]
+        policy_model = PolicyModel2D(modes1=all_modes, modes2=all_modes, modes3=all_modes, fc_dim=128, layers=[64, 64, 64, 64, 64], 
+                                     act='gelu', pad_ratio=0.0625, in_dim=1, ).cuda()
     else:
         raise RuntimeError()
     
@@ -180,10 +184,8 @@ def main(args, sample_data=False, train_shuffle=True):
                 optimizer.zero_grad()
                 out = observer_model(v_plane, re)
                 out = torch.einsum('bxztk -> btxz', out)
-                out_decoded = train_dataset.bound_v_norm.cuda_decode(out)
-                target_plane_index = 10
-                v_field_decoded = train_dataset.v_field_norm.cuda_decode(v_field)
-                target = v_field_decoded[:, :, :, target_plane_index, :]
+                out_decoded = train_dataset.v_field_norm.cuda_decode(out)
+                target = train_dataset.v_field_norm.cuda_decode(v_field)
                 loss = myloss(out_decoded.reshape(args.batch_size, -1), target.reshape(args.batch_size, -1))
                 loss.backward()
                 optimizer.step()
@@ -234,10 +236,8 @@ def main(args, sample_data=False, train_shuffle=True):
                     test_num += len(v_plane)
                     out = observer_model(v_plane, re)
                     out = torch.einsum('bxztk -> btxz', out)
-                    out_decoded = train_dataset.bound_v_norm.cuda_decode(out)
-                    target_plane_index = 10
-                    v_field_decoded = train_dataset.v_field_norm.cuda_decode(v_field)
-                    target = v_field_decoded[:, :, :, target_plane_index, :]
+                    out_decoded = train_dataset.v_field_norm.cuda_decode(out)
+                    target = train_dataset.v_field_norm.cuda_decode(v_field)
                     test_loss = myloss(out_decoded.reshape(args.batch_size, -1), target.reshape(args.batch_size, -1)).item()
                     test_l2 += test_loss
                     test_metrics = {"test/test_loss": test_loss / args.batch_size}
@@ -267,7 +267,7 @@ def main(args, sample_data=False, train_shuffle=True):
             wandb.log(avg_metrics)
     
     print("Running control")
-    control(args, observer_model, wandb_exist=True)
+    control(args, observer_model, policy_model=policy_model, train_dataset=train_dataset, wandb_exist=True)
     if not args.close_wandb:
         vis_diagram(dat)
         wandb.finish()
@@ -281,4 +281,6 @@ if __name__ == '__main__':
         args.close_wandb = True
     if args.set_re > 0:
         args.Re = args.set_re
+    if args.set_epoch > 0:
+        args.epochs = args.set_epoch
     main(args)

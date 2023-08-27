@@ -150,12 +150,13 @@ class FullFieldNSDataset(Dataset):
         self.v_field_files = sorted([onef for onef in self.file_list if v_field_name in onef])
         self.w_field_files = sorted([onef for onef in self.file_list if w_field_name in onef])
         print("In sequential dataset, the options downsample_rate, x_range and y_range are not supported.")
-        self.bound_v_mean, self.bound_v_std = self.metadata[v_field_name]['mean'][:, 0, :], self.metadata[v_field_name]['std'][:, 0, :]
+        self.bound_v_mean, self.bound_v_std = self.metadata[v_field_name]['mean'][:, -1, :], self.metadata[v_field_name]['std'][:, -1, :]
         self.v_field_mean, self.v_field_std = self.metadata[v_field_name]['mean'][:, 1:-1, :], self.metadata[v_field_name]['std'][:, 1:-1, :]
         self.data_index = data_index
         self.data_length = len(self.data_index)
+        self.plane_indexs = -10   # predict values at this plane
         self.bound_v_norm = NormalizerGivenMeanStd(self.bound_v_mean, self.bound_v_std)
-        self.v_field_norm = NormalizerGivenMeanStd(self.v_field_mean, self.v_field_std)
+        self.v_field_norm = NormalizerGivenMeanStd(self.v_field_mean, self.v_field_std, plane_indexs=self.plane_indexs)
         
     def __len__(self):
         return self.data_length // self.timestep
@@ -167,7 +168,7 @@ class FullFieldNSDataset(Dataset):
             v_field = np.load(os.path.join(self.data_folder, self.v_field_files[cur_index]))
             v_field = torch.tensor(v_field)
             v_plane = self.bound_v_norm.encode(v_field[:, -1, :])
-            v_field = self.v_field_norm.encode(v_field[:, 1:-1, :])
+            v_field = self.v_field_norm.encode(v_field[:, self.plane_indexs, :])
             v_plane = torch.tensor(v_plane)
             v_field = torch.tensor(v_field)
             seq_v_plane.append(v_plane)

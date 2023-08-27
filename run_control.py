@@ -19,9 +19,10 @@ from libs.arguments import *
 from tqdm import tqdm
 import os
 import torch.optim as optim
+from einops import rearrange
 
 
-def main(args, observer_model=None, wandb_exist=False):
+def main(args, observer_model=None, policy_model=None, train_dataset=None, wandb_exist=False):
     '''
     Policy settings.
     '''
@@ -110,7 +111,9 @@ def main(args, observer_model=None, wandb_exist=False):
     else:
         collect_data_folder = None
     
-    if args.policy_name not in ["gt", "rand", "unmanipulated"]:
+    if train_dataset is not None:
+        demo_dataset = train_dataset
+    elif args.policy_name not in ["gt", "rand", "unmanipulated"]:
         demo_dataset = PDEDataset(args, args.DATA_FOLDER, [1, 2, 3, 4, 5], args.downsample_rate, args.x_range, 
                                 args.y_range, use_patch=False)
     else:
@@ -149,6 +152,32 @@ def main(args, observer_model=None, wandb_exist=False):
             opV1, opV2 = control_env.gt_control()
             opV1 *= 0
             opV2 *= 0
+        elif args.policy_name == 'optimal-policy-observer':
+            p1, p2 = control_env.get_boundary_pressures()
+            opV1, opV2 = control_env.gt_control()   # one-side control
+            opV2 = torch.tensor(opV2).float().to(device).unsqueeze(0).unsqueeze(0)
+            opV2 = torch.einsum('btxy -> bxyt', opV2).unsqueeze(-1)  # expand feature dim
+            re = torch.tensor(control_env.Re).to(device).unsqueeze(0).float()
+            p2 = torch.tensor(p2).to(device).float()
+            p2 = p2.unsqueeze(0).unsqueeze(-1).unsqueeze(-1)
+            optimizer = optim.Adam(policy_model.parameters(), lr=0.001)
+            res_opV2 = policy_model(p2, re)
+            pred_v_field = observer_model(opV2 + res_opV2, re)
+            pred_v_field = torch.einsum('bxztk -> btxz', pred_v_field)
+            # TODO: finish this
+            # res_opV2 = train_dataset.v_field_norm.cuda_decode(res_opV2)
+            reg_weight = 0.1
+            initial_loss = torch.norm(pred_v_field) + reg_weight * torch.norm(opV2 + res_opV2)  # minimize this.
+            print("Initial Loss:", initial_loss.item())
+            num_epochs = 10
+            for epoch in range(num_epochs):
+                optimizer.zero_grad()  # Zero the gradients
+                pred_v_field = observer_model(opV2 + res_opV2, re)  # Forward pass
+                loss = torch.norm(pred_v_field) + reg_weight * torch.norm(opV2 + res_opV2) # minimize this.
+                loss.backward()  # Backpropagation
+                optimizer.step()  # Update the parameters
+            opV2 += res_opV2
+            opV2 = opV2.detach().cpu().numpy().squeeze()            
         elif args.policy_name == 'optimal-observer':
             opV1, opV2 = control_env.gt_control()   # one-side control
             opV2 = torch.tensor(opV2).float().to(device).unsqueeze(0).unsqueeze(0)
@@ -157,15 +186,22 @@ def main(args, observer_model=None, wandb_exist=False):
             
             # Instantiate the optimizer
             optimizer = optim.Adam([opV2], lr=0.001)  # You can adjust the learning rate
-            pred_v_field = observer_model(opV2, re)
             opV2.requires_grad = True
+            # Normalize and forward model
+            norm_opV2 = train_dataset.bound_v_norm.cuda_encode(opV2.squeeze()).float()
+            norm_opV2 = norm_opV2.unsqueeze(0).unsqueeze(-1).unsqueeze(-1)
+            norm_pred_v_field = observer_model(norm_opV2, re)
+            pred_v_field = train_dataset.v_field_norm.cuda_decode(norm_pred_v_field)
             reg_weight = 0.1
             initial_loss = torch.norm(pred_v_field) + reg_weight * torch.norm(opV2) # minimize this.
             # print("Initial Loss:", initial_loss.item())
             num_epochs = 10
             for epoch in range(num_epochs):
                 optimizer.zero_grad()  # Zero the gradients
-                pred_v_field = observer_model(opV2, re)  # Forward pass
+                norm_opV2 = train_dataset.bound_v_norm.cuda_encode(opV2.squeeze()).float()
+                norm_opV2 = norm_opV2.unsqueeze(0).unsqueeze(-1).unsqueeze(-1)
+                norm_pred_v_field = observer_model(norm_opV2, re)  # Forward pass
+                pred_v_field = train_dataset.v_field_norm.cuda_decode(norm_pred_v_field)
                 loss = torch.norm(pred_v_field) + reg_weight * torch.norm(opV2) # minimize this.
                 loss.backward()  # Backpropagation
                 optimizer.step()  # Update the parameters
@@ -249,6 +285,7 @@ def main(args, observer_model=None, wandb_exist=False):
     '''
     Save visualization results.
     '''
+    
     if args.vis_interval != -1:
         exp_dir = os.path.join(args.output_dir, exp_name)
         os.makedirs(exp_dir, exist_ok=True)

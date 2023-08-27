@@ -2,7 +2,7 @@ DATA_FOLDER: './outputs/61-revise-boundary-with-reynolds'
 ntrain: 280
 ntest: 20
 project_name: 'control_v2'
-exp_name: '62-neural-optimal-control-reg-weight'
+exp_name: '64-neural-optimal-control-fix-normalization'
 path_name: planes_channel180_minchan
 display_variables:
   - exp_name
@@ -41,6 +41,7 @@ policy_name:
   # - rand
   # - unmanipulated
   # - rno
+  # - optimal-policy-observer
   - optimal-observer
   # - fno
 rand_scale: 1

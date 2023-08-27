@@ -33,6 +33,7 @@ def parse_arguments():
     parser.add_argument('--train_yaml', type=str, default='configs/base_rno.yaml',
                         help='yaml path to load configs')
     parser.add_argument('--set_re', type=int, default=-1, help='reynolds number to generate data')
+    parser.add_argument('--set_epoch', type=int, default=-1, help='set training epochs')
     parser.add_argument('--force_close_wandb', action='store_true', help='close wandb log.')
     args = parser.parse_args()
     return args
