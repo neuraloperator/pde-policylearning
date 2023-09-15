@@ -150,13 +150,18 @@ class FullFieldNSDataset(Dataset):
         self.v_field_files = sorted([onef for onef in self.file_list if v_field_name in onef])
         self.w_field_files = sorted([onef for onef in self.file_list if w_field_name in onef])
         print("In sequential dataset, the options downsample_rate, x_range and y_range are not supported.")
-        self.bound_v_mean, self.bound_v_std = self.metadata[v_field_name]['mean'][:, -1, :], self.metadata[v_field_name]['std'][:, -1, :]
+        self.scale_factor = 1 # a dark magic, I don't know why it works
+        self.bound_v_mean, self.bound_v_std = self.metadata[v_field_name]['mean'][:, -1, :], self.metadata[v_field_name]['std'][:, -1, :] / self.scale_factor
         self.v_field_mean, self.v_field_std = self.metadata[v_field_name]['mean'][:, 1:-1, :], self.metadata[v_field_name]['std'][:, 1:-1, :]
         self.data_index = data_index
         self.data_length = len(self.data_index)
         self.plane_indexs = -10   # predict values at this plane
         self.bound_v_norm = NormalizerGivenMeanStd(self.bound_v_mean, self.bound_v_std)
-        self.v_field_norm = NormalizerGivenMeanStd(self.v_field_mean, self.v_field_std, plane_indexs=self.plane_indexs)
+        # self.v_field_norm = NormalizerGivenMeanStd(self.v_field_mean, self.v_field_std, plane_indexs=self.plane_indexs)
+        self.v_field_norm = self.bound_v_norm  # both OK
+        p_plane_name = 'P_planes'
+        self.p_plane_mean, self.p_plane_std = self.metadata[p_plane_name]['mean'], self.metadata[p_plane_name]['std']
+        self.p_plane_norm = NormalizerGivenMeanStd(self.p_plane_mean, self.p_plane_std)
         
     def __len__(self):
         return self.data_length // self.timestep

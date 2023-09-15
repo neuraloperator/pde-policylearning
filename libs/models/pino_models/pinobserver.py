@@ -308,6 +308,7 @@ class PINObserverFullField(nn.Module):
         self.modes1 = modes1
         self.modes2 = modes2
         self.modes3 = modes3
+        self.max_re = 1000
         self.pad_ratio = pad_ratio
         self.in_dim = in_dim
         if layers is None:
@@ -325,15 +326,6 @@ class PINObserverFullField(nn.Module):
 
         self.pred_net = PlanePredHead(layers=layers, modes1=self.modes1, modes2=self.modes2, modes3=self.modes3, 
                                       fc_dim=fc_dim, out_dim=out_dim, act=act)
-        # self.sp_convs = nn.ModuleList([SpectralConv3d(
-        #     in_size, out_size, mode1_num, mode2_num, mode3_num)
-        #     for in_size, out_size, mode1_num, mode2_num, mode3_num
-        #     in zip(self.layers, self.layers[1:], self.modes1, self.modes2, self.modes3)])
-        # self.ws = nn.ModuleList([nn.Conv1d(in_size, out_size, 1)
-        #                          for in_size, out_size in zip(self.layers, self.layers[1:])])
-        # self.fc1 = nn.Linear(layers[-1], fc_dim)
-        # self.fc2 = nn.Linear(fc_dim, out_dim)
-        # self.act = _get_act(act)
 
     def forward(self, x, re):
         '''
@@ -344,7 +336,7 @@ class PINObserverFullField(nn.Module):
         Returns:
             u: (batchsize, x_grid, y_grid, t_grid, 1)
         '''
-        re = re.float()
+        re = re.float() / self.max_re
         if self.use_fourier_layer:
             fourier_re = self.fourier_layer1(re.unsqueeze(-1))
         size_z = x.shape[-2]
@@ -364,20 +356,6 @@ class PINObserverFullField(nn.Module):
         
         res_plane = self.pred_net(x, num_pad, re, self.multiplicative_net2)
         return res_plane
-        # size_x, size_y, size_z = x.shape[-3], x.shape[-2], x.shape[-1]
-        # for i, (speconv, w) in enumerate(zip(self.sp_convs, self.ws)):
-        #     x1 = speconv(x)
-        #     x2 = w(x.view(batchsize, self.layers[i], -1)).view(batchsize, self.layers[i+1], size_x, size_y, size_z)
-        #     x = x1 + x2
-        #     if i != length - 1:
-        #         x = self.act(x)
-        # x = remove_padding(x, num_pad=num_pad)
-        # x = x.permute(0, 2, 3, 4, 1)
-        # x = self.multiplicative_net2(x, re)
-        # x = self.fc1(x)
-        # x = self.act(x)
-        # x = self.fc2(x)
-        # return x
         
         
 class PolicyModel2D(nn.Module):
@@ -412,6 +390,7 @@ class PolicyModel2D(nn.Module):
             assert len(pad_ratio) == 2, 'Cannot add padding in more than 2 directions.'
 
         self.pad_ratio = pad_ratio
+        self.max_re = 1000
         self.modes1 = modes1
         self.modes2 = modes2
         self.modes3 = modes3
@@ -442,7 +421,7 @@ class PolicyModel2D(nn.Module):
         Returns:
             u: (batchsize, x_grid, y_grid, t_grid, 1)
         '''
-        re = re.float()
+        re = re.float() / self.max_re
         if self.use_fourier_layer:
             fourier_re = self.fourier_layer1(re.unsqueeze(-1))
         size_z = x.shape[-2]

@@ -191,7 +191,7 @@ def main(args, observer_model=None, policy_model=None, train_dataset=None, wandb
             norm_opV2 = train_dataset.bound_v_norm.cuda_encode(opV2.squeeze()).float()
             norm_opV2 = norm_opV2.unsqueeze(0).unsqueeze(-1).unsqueeze(-1)
             norm_pred_v_field = observer_model(norm_opV2, re)
-            pred_v_field = train_dataset.v_field_norm.cuda_decode(norm_pred_v_field)
+            pred_v_field = train_dataset.bound_v_norm.cuda_decode(norm_pred_v_field)
             reg_weight = 0.1
             initial_loss = torch.norm(pred_v_field) + reg_weight * torch.norm(opV2) # minimize this.
             # print("Initial Loss:", initial_loss.item())
@@ -201,7 +201,7 @@ def main(args, observer_model=None, policy_model=None, train_dataset=None, wandb
                 norm_opV2 = train_dataset.bound_v_norm.cuda_encode(opV2.squeeze()).float()
                 norm_opV2 = norm_opV2.unsqueeze(0).unsqueeze(-1).unsqueeze(-1)
                 norm_pred_v_field = observer_model(norm_opV2, re)  # Forward pass
-                pred_v_field = train_dataset.v_field_norm.cuda_decode(norm_pred_v_field)
+                pred_v_field = train_dataset.bound_v_norm.cuda_decode(norm_pred_v_field)
                 loss = torch.norm(pred_v_field) + reg_weight * torch.norm(opV2) # minimize this.
                 loss.backward()  # Backpropagation
                 optimizer.step()  # Update the parameters
@@ -218,7 +218,7 @@ def main(args, observer_model=None, policy_model=None, train_dataset=None, wandb
         '''
         Collect data when needed
         '''
-        
+        mean_num = 100
         if args.collect_data and i > args.collect_start:
             idx_str = str(i).zfill(6)
             # (0) save Reynold numbers
@@ -228,38 +228,43 @@ def main(args, observer_model=None, policy_model=None, train_dataset=None, wandb
             opV1, opV2 = opV1.astype(np.float64), opV2.astype(np.float64)
             field_name = 'P_planes'
             np.save(os.path.join(collect_data_folder, f'{field_name}_{idx_str}.npy'), np.array(p2))
-            all_p_boundary.append(p2)
-            metadata[field_name] = {}
-            metadata[field_name]['mean'] = np.array(all_p_boundary).mean(0)
-            metadata[field_name]['std'] = np.array(all_p_boundary).std(0)
+            if i < mean_num:
+                all_p_boundary.append(p2)
+                metadata[field_name] = {}
+                metadata[field_name]['mean'] = np.array(all_p_boundary).mean(0)
+                metadata[field_name]['std'] = np.array(all_p_boundary).std(0)
             # (2) save boundary velocity
             field_name = 'V_planes'
             np.save(os.path.join(collect_data_folder, f'{field_name}_{idx_str}.npy'), np.array(opV2))
-            all_v_boundary.append(opV2)
-            metadata[field_name] = {}
-            metadata[field_name]['mean'] = np.array(all_v_boundary).mean(0)
-            metadata[field_name]['std'] = np.array(all_v_boundary).std(0)
+            if i < mean_num:
+                all_v_boundary.append(opV2)
+                metadata[field_name] = {}
+                metadata[field_name]['mean'] = np.array(all_v_boundary).mean(0)
+                metadata[field_name]['std'] = np.array(all_v_boundary).std(0)
             # (3) save u field info
             field_name = 'U_field'
             np.save(os.path.join(collect_data_folder, f'{field_name}_{idx_str}.npy'), np.array(control_env.U))
-            all_u_field.append(np.array(control_env.U))
-            metadata[field_name] = {}
-            metadata[field_name]['mean'] = np.array(all_u_field).mean(0)
-            metadata[field_name]['std'] = np.array(all_u_field).std(0)
+            if i < mean_num:
+                all_u_field.append(np.array(control_env.U))
+                metadata[field_name] = {}
+                metadata[field_name]['mean'] = np.array(all_u_field).mean(0)
+                metadata[field_name]['std'] = np.array(all_u_field).std(0)
             # (4) save v field info
             field_name = 'V_field'
             np.save(os.path.join(collect_data_folder, f'{field_name}_{idx_str}.npy'), np.array(control_env.V))
-            all_v_field.append(np.array(control_env.V))
-            metadata[field_name] = {}
-            metadata[field_name]['mean'] = np.array(all_v_field).mean(0)
-            metadata[field_name]['std'] = np.array(all_v_field).std(0)
+            if i < mean_num:
+                all_v_field.append(np.array(control_env.V))
+                metadata[field_name] = {}
+                metadata[field_name]['mean'] = np.array(all_v_field).mean(0)
+                metadata[field_name]['std'] = np.array(all_v_field).std(0)
             # (5) save w field info
             field_name = 'W_field'
             np.save(os.path.join(collect_data_folder, f'{field_name}_{idx_str}.npy'), np.array(control_env.W))
-            all_w_field.append(np.array(control_env.W))
-            metadata[field_name] = {}
-            metadata[field_name]['mean'] = np.array(all_w_field).mean(0)
-            metadata[field_name]['std'] = np.array(all_w_field).std(0)
+            if i < mean_num:
+                all_w_field.append(np.array(control_env.W))
+                metadata[field_name] = {}
+                metadata[field_name]['mean'] = np.array(all_w_field).mean(0)
+                metadata[field_name]['std'] = np.array(all_w_field).std(0)
             np.save(os.path.join(collect_data_folder, f'metadata.npy'), metadata)
         if control_env.reward_div() < -10:
             raise RuntimeError("Control is bloded!")

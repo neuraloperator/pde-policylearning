@@ -2,7 +2,7 @@ DATA_FOLDER: './outputs/61-revise-boundary-with-reynolds'
 ntrain: 280
 ntest: 20
 project_name: 'control_v2'
-exp_name: '64-neural-optimal-control-fix-normalization'
+exp_name: '67-large-sim-fix2'
 path_name: planes_channel180_minchan
 display_variables:
   - exp_name
@@ -23,6 +23,7 @@ dataset_name: FullFieldNSDataset
 
 # other control settings
 init_cond_path: ./data/channel180_minchan.mat  # original
+# init_cond_path: ./data/channel180_2pi_pi.mat  # large scale
 # init_cond_path: ./outputs/flow_900.npy  # will increase drag
 vis_sample_img: false
 noise_scale: 0.0
@@ -37,12 +38,12 @@ bc_type: original
 
 # policy setups
 policy_name:
-  # - gt
+  - gt
   # - rand
   # - unmanipulated
   # - rno
   # - optimal-policy-observer
-  - optimal-observer
+  # - optimal-observer
   # - fno
 rand_scale: 1
 reward_type: mse

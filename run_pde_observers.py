@@ -184,7 +184,7 @@ def main(args, sample_data=False, train_shuffle=True):
                 optimizer.zero_grad()
                 out = observer_model(v_plane, re)
                 out = torch.einsum('bxztk -> btxz', out)
-                out_decoded = train_dataset.v_field_norm.cuda_decode(out)
+                out_decoded = train_dataset.bound_v_norm.cuda_decode(out)
                 target = train_dataset.v_field_norm.cuda_decode(v_field)
                 loss = myloss(out_decoded.reshape(args.batch_size, -1), target.reshape(args.batch_size, -1))
                 loss.backward()
@@ -230,13 +230,13 @@ def main(args, sample_data=False, train_shuffle=True):
                     if not args.close_wandb:
                         wandb.log(test_metrics)
             elif args.dataset_name == 'FullFieldNSDataset':
-                for step, (v_plane, v_field, re) in enumerate(tqdm(train_loader)):
+                for step, (v_plane, v_field, re) in enumerate(tqdm(test_loader)):
                     v_plane, v_field, re = v_plane.cuda().float(), v_field.cuda().float(), re.cuda().float()
                     v_plane = torch.einsum('btxy -> bxyt', v_plane).unsqueeze(-1)
                     test_num += len(v_plane)
                     out = observer_model(v_plane, re)
                     out = torch.einsum('bxztk -> btxz', out)
-                    out_decoded = train_dataset.v_field_norm.cuda_decode(out)
+                    out_decoded = train_dataset.bound_v_norm.cuda_decode(out)
                     target = train_dataset.v_field_norm.cuda_decode(v_field)
                     test_loss = myloss(out_decoded.reshape(args.batch_size, -1), target.reshape(args.batch_size, -1)).item()
                     test_l2 += test_loss
@@ -244,7 +244,7 @@ def main(args, sample_data=False, train_shuffle=True):
                     if not args.close_wandb:
                         wandb.log(test_metrics)
 
-        train_l2/= train_num
+        train_l2 /= train_num
         test_l2 /= test_num
         t2 = default_timer()
         if test_l2 < best_loss:
