@@ -160,18 +160,17 @@ def main(args, observer_model=None, policy_model=None, train_dataset=None, wandb
             re = torch.tensor(control_env.Re).to(device).unsqueeze(0).float()
             p2 = torch.tensor(p2).to(device).float()
             p2 = p2.unsqueeze(0).unsqueeze(-1).unsqueeze(-1)
-            optimizer = optim.Adam(policy_model.parameters(), lr=0.001)
+            optimizer = optim.Adam(policy_model.parameters(), lr=1e-4)
             res_opV2 = policy_model(p2, re)
             pred_v_field = observer_model(opV2 + res_opV2, re)
             pred_v_field = torch.einsum('bxztk -> btxz', pred_v_field)
-            # TODO: finish this
-            # res_opV2 = train_dataset.v_field_norm.cuda_decode(res_opV2)
             reg_weight = 0.1
             initial_loss = torch.norm(pred_v_field) + reg_weight * torch.norm(opV2 + res_opV2)  # minimize this.
             print("Initial Loss:", initial_loss.item())
-            num_epochs = 10
+            num_epochs = 3
             for epoch in range(num_epochs):
                 optimizer.zero_grad()  # Zero the gradients
+                res_opV2 = policy_model(p2, re)
                 pred_v_field = observer_model(opV2 + res_opV2, re)  # Forward pass
                 loss = torch.norm(pred_v_field) + reg_weight * torch.norm(opV2 + res_opV2) # minimize this.
                 loss.backward()  # Backpropagation

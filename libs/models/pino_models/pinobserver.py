@@ -411,6 +411,9 @@ class PolicyModel2D(nn.Module):
 
         self.pred_net = PlanePredHead(layers=layers, modes1=self.modes1, modes2=self.modes2, modes3=self.modes3, 
                                       fc_dim=fc_dim, out_dim=out_dim, act=act)
+        # Initialize parameters to zero
+        for param in self.parameters():
+            nn.init.zeros_(param)
 
     def forward(self, x, re):
         '''
