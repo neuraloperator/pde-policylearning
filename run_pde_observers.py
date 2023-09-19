@@ -59,9 +59,9 @@ def main(args, sample_data=False, train_shuffle=True):
         dataset_fn = FullFieldNSDataset
     else:
         dataset_fn = PDEDataset
-    train_dataset = dataset_fn(args, args.DATA_FOLDER, training_idx, args.downsample_rate, args.x_range, args.y_range, use_patch=args.use_patch, full_field=args.full_field)
-    test_dataset = dataset_fn(args, args.DATA_FOLDER, testing_idx, args.downsample_rate, args.x_range, args.y_range, use_patch=args.use_patch, full_field=args.full_field)
-    if sample_data:
+    train_dataset = dataset_fn(args, args.DATA_FOLDER, training_idx, args.plane_indexs, args.downsample_rate, args.x_range, args.y_range, use_patch=args.use_patch, full_field=args.full_field)
+    test_dataset = dataset_fn(args, args.DATA_FOLDER, testing_idx, args.plane_indexs, args.downsample_rate, args.x_range, args.y_range, use_patch=args.use_patch, full_field=args.full_field)
+    if sample_data: 
         p_plane, v_plane = train_dataset[0]
         p_plane, v_plane = p_plane.cuda(), v_plane.cuda()
         v_plane = v_plane.squeeze()
@@ -83,7 +83,7 @@ def main(args, sample_data=False, train_shuffle=True):
         observer_model = RNO2dObserver(args.modes, args.modes, args.width, recurrent_index=args.recurrent_index, layer_num=args.layer_num).cuda()
     elif args.model_name == 'PINObserverFullField':
         all_modes = [args.modes, args.modes, args.modes, args.modes]
-        observer_model = PINObserverFullField(modes1=all_modes, modes2=all_modes, modes3=all_modes, fc_dim=128, layers=[64, 64, 64, 64, 64], 
+        observer_model = PINObserverFullField(plane_num=len(args.plane_indexs), modes1=all_modes, modes2=all_modes, modes3=all_modes, fc_dim=128, layers=[64, 64, 64, 64, 64], 
                                      act='gelu', pad_ratio=0.0625, in_dim=1, ).cuda()
     elif args.model_name == 'UNet':
         observer_model = UNet(use_spectral_conv=args.use_spectral_conv).cuda()
@@ -161,9 +161,9 @@ def main(args, sample_data=False, train_shuffle=True):
                     v_plane = v_plane.reshape(-1, args.x_range, args.y_range, 1)
                 train_num += len(v_plane)
                 optimizer.zero_grad()
-                out = observer_model(p_plane, v_plane)
-                out = out.reshape(-1, args.x_range, args.y_range)
-                out_decoded = train_dataset.v_norm.cuda_decode(out)
+                pred_field_raw = observer_model(p_plane, v_plane)
+                pred_field_raw = pred_field_raw.reshape(-1, args.x_range, args.y_range)
+                out_decoded = train_dataset.v_norm.cuda_decode(pred_field_raw)
                 v_plane = v_plane.squeeze()
                 v_plane_decoded = train_dataset.v_norm.cuda_decode(v_plane)
                 # loss = myloss(out.view(args.batch_size, -1), v_plane.view(args.batch_size, -1))
@@ -182,11 +182,23 @@ def main(args, sample_data=False, train_shuffle=True):
                 v_plane = torch.einsum('btxy -> bxyt', v_plane).unsqueeze(-1)
                 train_num += len(v_plane)
                 optimizer.zero_grad()
-                out = observer_model(v_plane, re)
-                out = torch.einsum('bxztk -> btxz', out)
-                out_decoded = train_dataset.bound_v_norm.cuda_decode(out)
-                target = train_dataset.v_field_norm.cuda_decode(v_field)
-                loss = myloss(out_decoded.reshape(args.batch_size, -1), target.reshape(args.batch_size, -1))
+                pred_field_raw = observer_model(v_plane, re)
+                pred_field_raw = torch.einsum('bpxztk -> btpxz', pred_field_raw)
+                pred_field_decoded = []
+                for plane_index in range(len(train_dataset.plane_indexs)):
+                    cur_pred = pred_field_raw[:, :, plane_index, :, :]
+                    cur_pred = train_dataset.bound_v_norm.cuda_decode(cur_pred)
+                    pred_field_decoded.append(cur_pred)
+                pref_field_decoded = torch.stack(pred_field_decoded, dim=2)
+                # v_field: [bs, feat dim, plane, x, y]
+                target_field = []
+                for plane_index in range(len(train_dataset.plane_indexs)):
+                    target_one_plane = v_field[:, :, plane_index, :, :]
+                    target_one_plane = train_dataset.v_field_norm.cuda_decode(target_one_plane)
+                    target_field.append(target_one_plane)
+                target = torch.stack(target_field, dim=2)
+                # pref_field_decoded, target: 
+                loss = myloss(pref_field_decoded.reshape(args.batch_size, -1), target.reshape(args.batch_size, -1))
                 loss.backward()
                 optimizer.step()
                 train_l2 += loss.item()
@@ -234,11 +246,23 @@ def main(args, sample_data=False, train_shuffle=True):
                     v_plane, v_field, re = v_plane.cuda().float(), v_field.cuda().float(), re.cuda().float()
                     v_plane = torch.einsum('btxy -> bxyt', v_plane).unsqueeze(-1)
                     test_num += len(v_plane)
-                    out = observer_model(v_plane, re)
-                    out = torch.einsum('bxztk -> btxz', out)
-                    out_decoded = train_dataset.bound_v_norm.cuda_decode(out)
+                    pred_field_raw = observer_model(v_plane, re)
+                    pred_field_raw = torch.einsum('bpxztk -> btpxz', pred_field_raw)
+                    pred_field_decoded = []
+                    for plane_index in range(len(train_dataset.plane_indexs)):
+                        cur_pred = pred_field_raw[:, :, plane_index, :, :]
+                        cur_pred = train_dataset.bound_v_norm.cuda_decode(cur_pred)
+                        pred_field_decoded.append(cur_pred)
+                    pref_field_decoded = torch.stack(pred_field_decoded, dim=2)
+                    target_field = []
+                    # v_field: [bs, feat dim, plane, x, y]
+                    for plane_index in range(len(train_dataset.plane_indexs)):
+                        target_one_plane = v_field[:, :, plane_index, :, :]
+                        target_one_plane = train_dataset.v_field_norm.cuda_decode(target_one_plane)
+                        target_field.append(target_one_plane)
+                    target = torch.stack(target_field, dim=2)
                     target = train_dataset.v_field_norm.cuda_decode(v_field)
-                    test_loss = myloss(out_decoded.reshape(args.batch_size, -1), target.reshape(args.batch_size, -1)).item()
+                    test_loss = myloss(pref_field_decoded.reshape(args.batch_size, -1), target.reshape(args.batch_size, -1)).item()
                     test_l2 += test_loss
                     test_metrics = {"test/test_loss": test_loss / args.batch_size}
                     if not args.close_wandb:

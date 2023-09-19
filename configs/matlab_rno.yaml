@@ -38,11 +38,11 @@ bc_type: original
 
 # policy setups
 policy_name:
-  # - gt
+  - gt
   # - rand
   # - unmanipulated
   # - rno
-  - optimal-policy-observer
+  # - optimal-policy-observer
   # - optimal-observer
   # - fno
 rand_scale: 1
@@ -67,6 +67,7 @@ model_timestep: 1
 recurrent_model: true
 recurrent_index: 0
 random_split: false
+plane_indexs: [-10, -8, -6]
 
 # visualization settings
 vis_frame: -1  # 60 by default, set to -1 to close

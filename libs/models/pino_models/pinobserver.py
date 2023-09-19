@@ -275,6 +275,7 @@ class PlanePredHead(nn.Module):
 
 class PINObserverFullField(nn.Module):
     def __init__(self, 
+                 plane_num,
                  modes1, 
                  modes2, 
                  modes3,
@@ -304,6 +305,7 @@ class PINObserverFullField(nn.Module):
         else:
             assert len(pad_ratio) == 2, 'Cannot add padding in more than 2 directions.'
 
+        self.plane_num = plane_num
         self.pad_ratio = pad_ratio
         self.modes1 = modes1
         self.modes2 = modes2
@@ -324,8 +326,12 @@ class PINObserverFullField(nn.Module):
         self.multiplicative_net1 = MultiplicativeNet(in1_features=layers[0], in2_features=1, out_features=layers[0])
         self.multiplicative_net2 = MultiplicativeNet(in1_features=layers[-1], in2_features=1, out_features=layers[-1])
 
-        self.pred_net = PlanePredHead(layers=layers, modes1=self.modes1, modes2=self.modes2, modes3=self.modes3, 
-                                      fc_dim=fc_dim, out_dim=out_dim, act=act)
+        head_list = []
+        for i in range(self.plane_num):
+            cur_head = PlanePredHead(layers=layers, modes1=self.modes1, modes2=self.modes2, modes3=self.modes3, 
+                                        fc_dim=fc_dim, out_dim=out_dim, act=act)
+            head_list.append(cur_head)
+        self.pred_net = nn.ModuleList(head_list)
 
     def forward(self, x, re):
         '''
@@ -351,11 +357,14 @@ class PINObserverFullField(nn.Module):
             x = self.multiplicative_net1(x, fourier_re)
         else:
             x = self.multiplicative_net1(x, re)
-        x = x.permute(0, 4, 1, 2, 3)
+        x = x.permute(0, 4, 1, 2, 3)  # [b, f, x, y, 1]
         x = add_padding(x, num_pad=num_pad)
-        
-        res_plane = self.pred_net(x, num_pad, re, self.multiplicative_net2)
-        return res_plane
+        field_pred = []
+        for cur_head in self.pred_net:
+            cur_field_pred = cur_head(x, num_pad, re, self.multiplicative_net2) # [b, x, y, 1, 1]
+            field_pred.append(cur_field_pred)
+        field_pred = torch.stack(field_pred, dim=1)
+        return field_pred
         
         
 class PolicyModel2D(nn.Module):

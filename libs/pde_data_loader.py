@@ -136,7 +136,7 @@ class FullFieldNSDataset(Dataset):
     """
     returns [timestep, height, width, dim] with dim = 1.
     """
-    def __init__(self, args, data_folder, data_index, downsample_rate, x_range, y_range, use_patch=False, full_field=True):
+    def __init__(self, args, data_folder, data_index, plane_indexs, downsample_rate, x_range, y_range, use_patch=False, full_field=True):
         super().__init__()
         self.timestep = args.model_timestep
         self.data_folder = data_folder
@@ -149,16 +149,15 @@ class FullFieldNSDataset(Dataset):
         self.u_field_files = sorted([onef for onef in self.file_list if u_field_name in onef])
         self.v_field_files = sorted([onef for onef in self.file_list if v_field_name in onef])
         self.w_field_files = sorted([onef for onef in self.file_list if w_field_name in onef])
-        print("In sequential dataset, the options downsample_rate, x_range and y_range are not supported.")
-        self.scale_factor = 1 # a dark magic, I don't know why it works
+        #  In sequential dataset, the options downsample_rate, x_range and y_range are not supported.
+        self.scale_factor = 1
         self.bound_v_mean, self.bound_v_std = self.metadata[v_field_name]['mean'][:, -1, :], self.metadata[v_field_name]['std'][:, -1, :] / self.scale_factor
         self.v_field_mean, self.v_field_std = self.metadata[v_field_name]['mean'][:, 1:-1, :], self.metadata[v_field_name]['std'][:, 1:-1, :]
         self.data_index = data_index
         self.data_length = len(self.data_index)
-        self.plane_indexs = -10   # predict values at this plane
+        self.plane_indexs = plane_indexs # predict values at these planes
         self.bound_v_norm = NormalizerGivenMeanStd(self.bound_v_mean, self.bound_v_std)
-        # self.v_field_norm = NormalizerGivenMeanStd(self.v_field_mean, self.v_field_std, plane_indexs=self.plane_indexs)
-        self.v_field_norm = self.bound_v_norm  # both OK
+        self.v_field_norm = self.bound_v_norm
         p_plane_name = 'P_planes'
         self.p_plane_mean, self.p_plane_std = self.metadata[p_plane_name]['mean'], self.metadata[p_plane_name]['std']
         self.p_plane_norm = NormalizerGivenMeanStd(self.p_plane_mean, self.p_plane_std)
@@ -170,14 +169,16 @@ class FullFieldNSDataset(Dataset):
         seq_v_plane, seq_v_field = [], []
         for cur_t in range(self.timestep):
             cur_index = self.data_index[index * self.timestep + cur_t]
-            v_field = np.load(os.path.join(self.data_folder, self.v_field_files[cur_index]))
-            v_field = torch.tensor(v_field)
-            v_plane = self.bound_v_norm.encode(v_field[:, -1, :])
-            v_field = self.v_field_norm.encode(v_field[:, self.plane_indexs, :])
-            v_plane = torch.tensor(v_plane)
-            v_field = torch.tensor(v_field)
+            all_v_field = np.load(os.path.join(self.data_folder, self.v_field_files[cur_index]))
+            all_v_field = torch.tensor(all_v_field)
+            v_plane = self.bound_v_norm.encode(all_v_field[:, -1, :])
+            target_v_field = []
+            for plane_id in self.plane_indexs:
+                cur_v_field = self.v_field_norm.encode(all_v_field[:, plane_id, :])  # [x, y]
+                target_v_field.append(cur_v_field)
+            target_v_field = torch.stack(target_v_field)
             seq_v_plane.append(v_plane)
-            seq_v_field.append(v_field)
-        seq_v_plane = torch.stack(seq_v_plane)  # [1, 32, 32]
-        seq_v_field = torch.stack(seq_v_field)  # [1, 32, 128, 32]
+            seq_v_field.append(target_v_field)
+        seq_v_plane = torch.stack(seq_v_plane)  # [T, X, Y]
+        seq_v_field = torch.stack(seq_v_field)  # [T, P (plane num), X, Y]
         return seq_v_plane, seq_v_field, self.re
