@@ -290,9 +290,10 @@ def main(args, sample_data=False, train_shuffle=True):
         if not args.close_wandb:
             wandb.log(avg_metrics)
     
-    print("Running control")
-    control(args, observer_model, policy_model=policy_model, train_dataset=train_dataset, wandb_exist=True)
-    if not args.close_wandb:
+    if args.run_control:
+        print("Running control")
+        control(args, observer_model, policy_model=policy_model, train_dataset=train_dataset, wandb_exist=True)
+    if not args.close_wandb and args.dataset_name == "SequentialPDEDataset":
         vis_diagram(dat)
         wandb.finish()
 

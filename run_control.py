@@ -190,9 +190,14 @@ def main(args, observer_model=None, policy_model=None, train_dataset=None, wandb
             norm_opV2 = train_dataset.bound_v_norm.cuda_encode(opV2.squeeze()).float()
             norm_opV2 = norm_opV2.unsqueeze(0).unsqueeze(-1).unsqueeze(-1)
             norm_pred_v_field = observer_model(norm_opV2, re)
-            pred_v_field = train_dataset.bound_v_norm.cuda_decode(norm_pred_v_field)
+            pred_field = []
+            for plane_index in range(len(train_dataset.plane_indexs)):
+                pred_one_plane = norm_pred_v_field[:, plane_index, :, :]
+                pred_one_plane = train_dataset.v_field_norm.cuda_decode(pred_one_plane)
+                pred_field.append(pred_one_plane)
+            pred_field = torch.stack(pred_field, dim=2)
             reg_weight = 0.1
-            initial_loss = torch.norm(pred_v_field) + reg_weight * torch.norm(opV2) # minimize this.
+            initial_loss = torch.norm(pred_field) + reg_weight * torch.norm(opV2) # minimize this.
             # print("Initial Loss:", initial_loss.item())
             num_epochs = 10
             for epoch in range(num_epochs):
@@ -200,8 +205,13 @@ def main(args, observer_model=None, policy_model=None, train_dataset=None, wandb
                 norm_opV2 = train_dataset.bound_v_norm.cuda_encode(opV2.squeeze()).float()
                 norm_opV2 = norm_opV2.unsqueeze(0).unsqueeze(-1).unsqueeze(-1)
                 norm_pred_v_field = observer_model(norm_opV2, re)  # Forward pass
-                pred_v_field = train_dataset.bound_v_norm.cuda_decode(norm_pred_v_field)
-                loss = torch.norm(pred_v_field) + reg_weight * torch.norm(opV2) # minimize this.
+                pred_field = []
+                for plane_index in range(len(train_dataset.plane_indexs)):
+                    pred_one_plane = norm_pred_v_field[:, plane_index, :, :]
+                    pred_one_plane = train_dataset.v_field_norm.cuda_decode(pred_one_plane)
+                    pred_field.append(pred_one_plane)
+                pred_field = torch.stack(pred_field, dim=2)
+                loss = torch.norm(pred_field) + reg_weight * torch.norm(opV2) # minimize this.
                 loss.backward()  # Backpropagation
                 optimizer.step()  # Update the parameters
             opV2 = opV2.detach().cpu().numpy().squeeze()

@@ -2,8 +2,9 @@ DATA_FOLDER: './outputs/61-revise-boundary-with-reynolds'
 ntrain: 280
 ntest: 20
 project_name: 'control_v2'
-exp_name: '68-policy-model-zero-init'
+exp_name: '69-full field prediction - seperate layer model'
 path_name: planes_channel180_minchan
+run_control: true
 display_variables:
   - exp_name
   - bc_type
@@ -38,12 +39,12 @@ bc_type: original
 
 # policy setups
 policy_name:
-  - gt
+  # - gt
   # - rand
   # - unmanipulated
   # - rno
   # - optimal-policy-observer
-  # - optimal-observer
+  - optimal-observer
   # - fno
 rand_scale: 1
 reward_type: mse
