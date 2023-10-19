@@ -6,6 +6,19 @@ import cv2
 # create the folder
 os.makedirs("data/exp", exist_ok=True)
 
+# Define the path to the images and the output video file
+image_folder = 'data/exp/'
+video_name = 'output_video.mp4'
+
+# Empty the image folder
+for filename in os.listdir(image_folder):
+    file_path = os.path.join(image_folder, filename)
+    
+    # Check if the file is a regular file (not a directory)
+    if os.path.isfile(file_path):
+        os.remove(file_path)
+        
+        
 def load_step_data_and_cal_dis(step):
     mat_data = scipy.io.loadmat(f'data/channel180_minchan_{step}.mat')
 
@@ -47,44 +60,45 @@ def load_step_data_and_cal_dis(step):
     discriminant = 27/4*R_value**2 + Q_value ** 3
     return discriminant
 
-init_discriminant = load_step_data_and_cal_dis('1')
-step_list = [str(i) for i in range(1, 11201, 200)]
-frame_length = 30
-decay_thre = 1e-4
+generate_data = True
 
-for frame_id in range(frame_length):
-    # Create an isosurface
-    step_id = step_list[int(frame_id / frame_length * len(step_list))]
-    discriminant = load_step_data_and_cal_dis(step_id)
-    mlab.figure('vid', bgcolor=(1, 1, 1), fgcolor=(0.,0.,0.), size=(800, 600))
-    mlab.contour3d(discriminant, contours=[frame_id * decay_thre + 1e-5], opacity=0.2, colormap='viridis')
-    mlab.contour3d(init_discriminant, contours=[1e-5 + 1e-5], opacity=0.0, colormap='viridis')  # dummy background to hold the axes
-    # mlab.contour3d(discriminant, contours=[0.0], opacity=1.0, colormap='jet')
-    # mlab.contour3d(discriminant, contours=[0.0], opacity=1.0, colormap='hot')
-    # Add axes
-    mlab.axes(color=(0.0, 0.0, 0.0), line_width=1.5, ranges=(0, 32, 0, 16, 0, 32))
-    mlab.xlabel('x')
-    mlab.ylabel('y')
-    mlab.zlabel('z')
-    mlab.view(azimuth=-90, elevation=-150, distance=80)
-    mlab.savefig('data/exp/{:03d}.png'.format(frame_id))
-    # mlab.show()
-    mlab.clf()
+if generate_data:
+    init_discriminant = load_step_data_and_cal_dis('1')
+    step_list = [str(i) for i in range(1, 8001, 200)]
+    step_list = step_list[::-1]
+    frame_length = 30
+    indices = np.linspace(0, len(step_list)-1, frame_length, dtype=int)
+    decay_thre = 1e-6
 
-
-# Define the path to the images and the output video file
-image_folder = 'data/exp/'
-video_name = 'output_video.mp4'
-
+    for frame_id in range(frame_length):
+        # Create an isosurface
+        step_id = step_list[indices[frame_id]]
+        discriminant = load_step_data_and_cal_dis(step_id)
+        mlab.figure('vid', bgcolor=(1, 1, 1), fgcolor=(0.,0.,0.), size=(800, 600))
+        mlab.contour3d(discriminant, contours=[frame_id * decay_thre + 1e-5], opacity=0.2, colormap='viridis')
+        mlab.contour3d(init_discriminant, contours=[1e-5 + 1e-5], opacity=0.0, colormap='viridis')  # dummy background to hold the axes
+        # mlab.contour3d(discriminant, contours=[0.0], opacity=1.0, colormap='jet')
+        # mlab.contour3d(discriminant, contours=[0.0], opacity=1.0, colormap='hot')
+        # Add axes
+        mlab.axes(color=(0.0, 0.0, 0.0), line_width=1.5, ranges=(0, 32, 0, 16, 0, 32))
+        mlab.xlabel('x')
+        mlab.ylabel('y')
+        mlab.zlabel('z')
+        mlab.view(azimuth=-90, elevation=-150, distance=80)
+        mlab.savefig('data/exp/{:03d}.png'.format(frame_id))
+        # mlab.show()
+        mlab.clf()
+        
 # Get the list of image files
 images = [img for img in os.listdir(image_folder) if img.endswith(".png")]
+images = sorted(images)
 frame = cv2.imread(os.path.join(image_folder, images[0]))
 
 # Set the frame width, height width 
 # the width, height of first image
 height, width, layers = frame.shape
 
-video = cv2.VideoWriter(video_name, cv2.VideoWriter_fourcc(*'mp4v'), 5, (width,height))
+video = cv2.VideoWriter(video_name, cv2.VideoWriter_fourcc(*'mp4v'), 3, (width,height))
 
 for image in images:
     video.write(cv2.imread(os.path.join(image_folder, image)))
