@@ -3,6 +3,7 @@ import math
 import numpy as np
 import torch
 import torch.nn as nn
+from scipy import io
 import torch.nn.functional as F
 from timeit import default_timer
 from libs.utilities3 import *
@@ -271,6 +272,10 @@ def main(args, sample_data=False, train_shuffle=True):
         train_l2 /= train_num
         test_l2 /= test_num
         t2 = default_timer()
+        # # save data into disk
+        # data = {'gt': target.cpu().numpy(), 'pred': pref_field_decoded.cpu().numpy(),}
+        # io.savemat(f'{ep}.mat', data)
+        
         if test_l2 < best_loss:
             best_loss = test_l2
             if args.dataset_name == "SequentialPDEDataset":
