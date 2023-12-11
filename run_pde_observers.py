@@ -272,9 +272,9 @@ def main(args, sample_data=False, train_shuffle=True):
         train_l2 /= train_num
         test_l2 /= test_num
         t2 = default_timer()
-        # save data into disk
-        data = {'gt': target.cpu().numpy(), 'pred': pref_field_decoded.cpu().numpy(),}
-        io.savemat(f'{ep}.mat', data)
+        # # save data into disk
+        # data = {'gt': target.cpu().numpy(), 'pred': pref_field_decoded.cpu().numpy(),}
+        # io.savemat(f'{ep}.mat', data)
         
         if test_l2 < best_loss:
             best_loss = test_l2
