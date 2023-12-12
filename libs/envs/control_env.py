@@ -24,6 +24,7 @@ class NSControlEnvMatlab:
         print("Lauching finished!")
         self.eng.addpath("./libs/matlab_codes")
         self.load_state(load_path=args.init_cond_path)
+        # dummy code of dump and load functions
         save_path = './outputs/stable_flow.npy'
         self.dump_state(save_path=save_path)
         self.load_state(load_path=save_path)
@@ -332,9 +333,9 @@ class NSControlEnvMatlab:
         return opV2
     
     def gt_control(self):
-        opV1 = self.V[:, self.detect_plane, :]
+        opV1 = - self.V[:, self.detect_plane, :]
         opV1 = np.array(opV1)
-        opV2 = self.V[:, -self.detect_plane, :]
+        opV2 = - self.V[:, -self.detect_plane, :]
         opV2 = np.array(opV2)
         return opV1, opV2
 
@@ -356,8 +357,8 @@ class NSControlEnvMatlab:
         # Return the next state, reward, termination flag, and additional info
         prev_U, prev_V, prev_W = self.U.copy(), self.V.copy(), self.W.copy()
         for i in range(2):
-            applied_opV1 = opV1 * 0  # apply half control
-            self.step_rk3(applied_opV1, opV2)
+            # applied_opV1 = opV1 * 0  # apply half control
+            self.step_rk3(opV1, opV2)
         p1, p2 = self.get_boundary_pressures()
         div = self.reward_div()
         dpdx_finite_difference = self.cal_dpdx_finite_difference(p2)

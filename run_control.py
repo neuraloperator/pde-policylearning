@@ -22,7 +22,7 @@ import torch.optim as optim
 from einops import rearrange
 
 
-def main(args, observer_model=None, policy_model=None, train_dataset=None, wandb_exist=False):
+def run_control(args, observer_model=None, policy_model=None, train_dataset=None, wandb_exist=False):
     '''
     Policy settings.
     '''
@@ -125,7 +125,7 @@ def main(args, observer_model=None, policy_model=None, train_dataset=None, wandb
     pressure_v, opV2_v, top_view_v, front_view_v, side_view_v, all_p_boundary, all_v_boundary = [], [], [], [], [], [], []
     metadata = {}
     all_u_field, all_v_field, all_w_field = [], [], []
-    for i in tqdm(range(args.control_timestep + 1)):
+    for i in (pbar := tqdm(range(args.control_timestep + 1))):
         # pressure: [32, 32], opV2: [32, 32]
         if args.policy_name in ['fno', 'rno']:  # neural policies
             p1, p2 = control_env.get_boundary_pressures()
@@ -147,7 +147,7 @@ def main(args, observer_model=None, policy_model=None, train_dataset=None, wandb
             opV1 = opV2 * 0
         elif args.policy_name == 'gt':
             p1, p2 = control_env.get_boundary_pressures()
-            opV1, opV2 = control_env.gt_control()   # one-side control
+            opV1, opV2 = control_env.gt_control()
         elif args.policy_name == 'unmanipulated':
             opV1, opV2 = control_env.gt_control()
             opV1 *= 0
@@ -227,6 +227,7 @@ def main(args, observer_model=None, policy_model=None, train_dataset=None, wandb
         '''
         Collect data when needed
         '''
+        
         mean_num = 100
         if args.collect_data and i > args.collect_start:
             idx_str = str(i).zfill(6)
@@ -294,7 +295,9 @@ def main(args, observer_model=None, policy_model=None, train_dataset=None, wandb
             pressure_v.append(cur_pressure_image)
         if i % 100 == 0 and args.dump_state:
             control_env.dump_state(save_path=os.path.join('outputs', f'flow_{i}.npy'))
-        print(f"timestep: {i}, results: {info}.")
+        if i > 0:  # omit the first iter
+            print_info = f"dPdx: {info['drag_reduction/3_3_dPdx_reverse_cal']:.7f}; DR: {1 - info['drag_reduction_relative/3_3_dPdx_reverse_cal']:.4f}"
+            pbar.set_description(print_info)
 
     '''
     Save visualization results.
@@ -321,4 +324,4 @@ if __name__ == '__main__':
     args = merge_args_with_yaml(args, loaded_args)
     if not args.close_wandb:
         wandb.login()
-    main(args)
+    run_control(args)

@@ -18,7 +18,7 @@ from libs.arguments import *
 from libs.metrics import *
 from tqdm import tqdm
 from torch.optim import Adam
-from run_control import main as control
+from run_control import run_control
 
 torch.manual_seed(0)
 np.random.seed(0)
@@ -39,7 +39,7 @@ def main(args, sample_data=False, train_shuffle=True):
     else:
         args.control_only = False
     if args.control_only:
-        control(args, observer_model=None, wandb_exist=False)
+        run_control(args, observer_model=None, wandb_exist=False)
         return
     args.using_transformer = 'Transformer' in args.model_name
     assert args.model_name in ['UNet', 'RNO2dObserver', 'PINObserverFullField', 'FNO2dObserverOld', 'FNO2dObserver', 'Transformer2D'],  "Model not supported!"
@@ -297,7 +297,7 @@ def main(args, sample_data=False, train_shuffle=True):
     
     if args.run_control:
         print("Running control")
-        control(args, observer_model, policy_model=policy_model, train_dataset=train_dataset, wandb_exist=True)
+        run_control(args, observer_model, policy_model=policy_model, train_dataset=train_dataset, wandb_exist=True)
     if not args.close_wandb and args.dataset_name == "SequentialPDEDataset":
         vis_diagram(dat)
         wandb.finish()

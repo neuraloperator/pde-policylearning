@@ -4,7 +4,7 @@ ntest: 20
 project_name: 'control_v2'
 exp_name: '0071-new-solver'
 path_name: planes_channel180_minchan
-run_control: false
+run_control: true
 display_variables:
   - exp_name
   - bc_type
@@ -23,12 +23,12 @@ model_name: PINObserverFullField
 dataset_name: FullFieldNSDataset
 
 # other control settings
-init_cond_path: ./data/channel180_minchan.mat  # original
+init_cond_path: ./data/channel180_minchan_mf.mat  # original
 # init_cond_path: ./data/channel180_2pi_pi.mat  # large scale
 # init_cond_path: ./outputs/flow_900.npy  # will increase drag
 vis_sample_img: false
 noise_scale: 0.0
-detect_plane: 26  # get velocity from detect plane
+detect_plane: 24  # get velocity from detect plane
 test_plane: -25  # not used
 w_weight: 0.0
 x_range: 32
@@ -82,7 +82,7 @@ batch_size: 32
 layer_num: 1
 close_wandb: false
 epochs: 100
-control_timestep: 400
+control_timestep: 10000
 
 # # large model
 # batch_size: 32  # 20
