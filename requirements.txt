@@ -1,0 +1,8 @@
+tensorly
+h5py
+opt_einsum
+tensorly-torch
+torch-harmonics
+zarr
+psutil
+wandb

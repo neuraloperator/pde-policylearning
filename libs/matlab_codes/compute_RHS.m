@@ -1,10 +1,8 @@
 function [Fu, Fv, Fw] = compute_RHS(U, V, W,nu,dx,dz,y,ym,yg,Ny,dPdx)
-%% Find RHS of the 2D-NS equation
-% Fu = - d(uu)/dx -d(uv)/dy + 1/Re*du/dx + 1/Re*du/dy 
-% Fv = - d(uv)/dx -d(vv)/dy + 1/Re*dv/dx + 1/Re*dv/dy 
-
-% global variables
-% global nu dx dz y ym yg Ny dPdx
+% Find RHS of the 3D-NS equation
+% Fu = -d(uu)/dx -d(uv)/dy -d(uw)/dz + 1/Re*(du/dx + du/dy + du/dz)
+% Fv = -d(uv)/dx -d(vv)/dy -d(vw)/dz + 1/Re*(dv/dx + dv/dy + dv/dz)
+% Fw = -d(uw)/dx -d(vw)/dy -d(ww)/dz + 1/Re*(dw/dx + dw/dy + dw/dz)
 
 % compute Fu
 Fu = zeros(size(U));
@@ -23,7 +21,7 @@ Fu = Fu - (UW(:,:,[2:end,1]) - UW)/dz;
 Fu = Fu + nu * ( U([2:end,1],:,:) - 2*U + U([end,1:end-1],:,:) )/dx^2;
 % compute 1/Re*d^2u/dz^2
 for i = 2:Ny
-    Fu(:,i,:) = Fu(:,i,:) + nu * ...
+    Fu(:,i,:) = Fu(:,i,:) + nu * ... 
                    (( U(:,i+1,:) - U(:,i  ,:) ) / (yg(i+1)-yg(i  )) - ...
                     ( U(:,i  ,:) - U(:,i-1,:) ) / (yg(i  )-yg(i-1))) / ...
                    (y(i)-y(i-1));

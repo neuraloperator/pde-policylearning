@@ -604,7 +604,7 @@ class MultipleReynoldsKFaDataset(Dataset):
             a_data = a_data.reshape(self.n_samples * K, 1, self.pde_res[0], self.pde_res[1])    # 2N x 1 x S x S
         else:
             a_data = raw_data[self.offset: self.offset + self.n_samples, 0:1, ::a_sub_x, ::a_sub_x]
-
+        import pdb; pdb.set_trace()
         # convert into torch tensor
         data = torch.from_numpy(data).to(torch.float32)
         a_data = torch.from_numpy(a_data).to(torch.float32).permute(0, 2, 3, 1)  # [N, S, S, 1]

@@ -99,7 +99,8 @@ for i = 1:Nt
     % advance in time (RK3)
     P  = compute_pressure(U,V,W,nu,dPdx,y,ym,yg,dx,dz,kxx,kzz,Nx,Ny,Nz,DD);
     opV2 = compute_opposition(squeeze(-0.5*(P(:,end,:)+P(:,end-1,:))));
-    [U, V, W] = time_advance_RK3(opV2, U, V, W, nu,dPdx,y,ym,yg,dx,dz,dt,kxx,kzz,Nx,Ny,Nz,DD);%     disp(mean(abs(U(:))));
+    [U, V, W] = time_advance_RK3(opV2, U, V, W, nu,dPdx,y,ym,yg,dx,dz,dt,kxx,kzz,Nx,Ny,Nz,DD);
+%     disp(mean(abs(U(:))));
 %     disp(mean(abs(V(:))));
 %     disp(mean(abs(W(:))));
 %     str = sprintf(['%.', num2str(precision), 'f'], sum(V(:)));

@@ -211,6 +211,7 @@ def subprocess(args):
             optimizer.load_state_dict(ckpt['optim'])
             scheduler.load_state_dict(ckpt['scheduler'])
             config['train']['start_iter'] = scheduler.last_epoch
+        import pdb; pdb.set_trace()
         train_ns(model, 
                  u_loader, 
                  val_loader, 

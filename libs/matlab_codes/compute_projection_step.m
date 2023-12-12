@@ -1,7 +1,5 @@
 function [Uout, Vout, Wout] = compute_projection_step(Uin,Vin,Win,dx,dz,ym,y,kxx,kzz,Nx,Ny,Nz,DD)
 
-% global dx dz ym y kxx kzz Nx Ny Nz DD
-
 % compute divergence of velocity field
 p = zeros(Nx,Ny-1,Nz);
 for i = 1:Ny-1

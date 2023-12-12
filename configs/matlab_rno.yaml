@@ -2,7 +2,7 @@ DATA_FOLDER: './outputs/61-revise-boundary-with-reynolds'
 ntrain: 280
 ntest: 20
 project_name: 'control_v2'
-exp_name: '69-full field prediction - mlp head'
+exp_name: '0071-new-solver'
 path_name: planes_channel180_minchan
 run_control: false
 display_variables:
@@ -39,12 +39,12 @@ bc_type: original
 
 # policy setups
 policy_name:
-  # - gt
+  - gt
   # - rand
   # - unmanipulated
   # - rno
   # - optimal-policy-observer
-  - optimal-observer
+  # - optimal-observer
   # - fno
 rand_scale: 1
 reward_type: mse
