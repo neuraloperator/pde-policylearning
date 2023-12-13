@@ -4,6 +4,7 @@ from libs.utilities3 import *
 from libs.visualization import *
 from sklearn.metrics import mean_squared_error
 from libs.env_util import to_m, relative_loss, apply_periodic_boundary
+from pympler import muppy, summary
 
 
 class NSControlEnvMatlab:
@@ -21,8 +22,8 @@ class NSControlEnvMatlab:
         self.bc_type = args.bc_type
         print("Lauching matlab...")
         self.eng = matlab.engine.start_matlab()
-        print("Lauching finished!")
         self.eng.addpath("./libs/matlab_codes")
+        print("Lauching finished!")
         self.load_state(load_path=args.init_cond_path)
         # dummy code of dump and load functions
         save_path = './outputs/stable_flow.npy'
@@ -171,21 +172,12 @@ class NSControlEnvMatlab:
     '''  
     
     def cal_div(self):
-        div1 = np.zeros((self.Nx, self.Ny-1, self.Nz))
-        uxsum, uysum, uzsum = 0, 0, 0
-        for j in range(self.Ny-1):
-            prev_u, prev_w = self.U[:, j+1, :], self.W[:, j+1, :]
-            next_u, next_w = np.concatenate([self.U[1:, j+1, :], self.U[0, j+1, :][np.newaxis, :]], axis=0), \
-                            np.concatenate([self.W[:, j+1, 1:], self.W[:, j+1, 0][:, np.newaxis]], axis=1)
-            ux = (next_u - prev_u) / self.dx 
-            uy = (self.V[:, j+1, :] - self.V[:, j, :]) / (self.y[j+1] - self.y[j])
-            uz = (next_w - prev_w) / self.dz
-            uxsum += np.abs(ux)
-            uysum += np.abs(uy)
-            uzsum += np.abs(uz)
-            div1[:, j, :] = ux + uy + uz
-        div = self.eng.compute_div(to_m(self.U), to_m(self.V), to_m(self.W), to_m(self.dx), to_m(self.y), to_m(self.dz),\
-            to_m(self.Nx), to_m(self.Ny), to_m(self.Nz))
+        div = np.zeros((self.Nx, self.Ny - 1, self.Nz))
+        for j in range(self.Ny - 1):
+            ux = (np.concatenate([self.U[1:, j + 1, :], self.U[0, j + 1, :][np.newaxis, :]], axis=0) - self.U[:, j + 1, :]) / self.dx
+            uy = (self.V[:, j + 1, :] - self.V[:, j, :]) / (getattr(self, 'y')[j + 1] - getattr(self, 'y')[j])
+            uz = (np.concatenate([self.W[:, j + 1, 1:], self.W[:, j + 1, 0][:, np.newaxis]], axis=-1) - self.W[:, j + 1, :]) / self.dz
+            div[:, j, :] = ux + uy + uz
         div = np.array(div)
         return div
 
@@ -250,7 +242,8 @@ class NSControlEnvMatlab:
         return shear_stress_res
     
     def reward_div(self, bound=-100):
-        reward = - abs(np.sum(self.cal_div()))
+        div = self.cal_div()
+        reward = - abs(np.sum(div))
         if reward < bound:
             reward = bound
         return reward
@@ -381,12 +374,15 @@ class NSControlEnvMatlab:
         # Perform one step in the environment
         # Update state, calculate reward, check termination condition, etc.
         # Return the next state, reward, termination flag, and additional info
-        prev_U, prev_V, prev_W = self.U.copy(), self.V.copy(), self.W.copy()
+        # print("before rk3")
+        # summary.print_(summary.summarize(muppy.get_objects()))
         self.step_rk3(opV1, opV2)
+        # print("after rk3")
+        # summary.print_(summary.summarize(muppy.get_objects()))
         p1, p2 = self.get_boundary_pressures()
+        u_velocity = self.cal_bulk_v()
         div = self.reward_div()
         dpdx_finite_difference = self.cal_dpdx_finite_difference(p2)
-        u_velocity = self.cal_bulk_v()
         v_velocity = self.cal_velocity_mean('V', sample_index=None)
         w_velocity = self.cal_velocity_mean('W', sample_index=None)
         pressure_mean = p2.mean()

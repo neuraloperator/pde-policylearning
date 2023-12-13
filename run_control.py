@@ -20,6 +20,8 @@ from tqdm import tqdm
 import os
 import torch.optim as optim
 from einops import rearrange
+from pympler import muppy, summary
+from pympler import tracker
 
 
 def run_control(args, observer_model=None, policy_model=None, train_dataset=None, wandb_exist=False):
@@ -282,6 +284,7 @@ def run_control(args, observer_model=None, policy_model=None, train_dataset=None
         if control_env.reward_div() < -10:
             raise RuntimeError("Control is bloded!")
         side_pressure, reward, done, info = control_env.step(opV1, opV2)
+        
         if not args.close_wandb and i > 0:  # ignore the first iteration
             info['control_timestep'] = i
             wandb.log(info)
@@ -318,6 +321,10 @@ def run_control(args, observer_model=None, policy_model=None, train_dataset=None
     print("Program finished!")
     if not args.close_wandb and not wandb_exist:
         wandb.finish()
+    
+    # Analyzing memory
+    print("memory consumption info:")
+    summary.print_(summary.summarize(muppy.get_objects()))
 
 
 if __name__ == '__main__':

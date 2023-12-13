@@ -27,7 +27,6 @@ def relative_loss(A, B):
     return loss
 
 
-
 def apply_periodic_boundary(arr, mod_length=3, axis=0):
     """
     Apply periodic boundary condition to a NumPy array along the first axis.

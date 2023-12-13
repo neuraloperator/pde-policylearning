@@ -80,9 +80,9 @@ output_dir: ./outputs
 width: 34  # 32 by default
 batch_size: 32
 layer_num: 1
-close_wandb: true
+close_wandb: false
 epochs: 100
-control_timestep: 10000
+control_timestep: 1000
 
 # # large model
 # batch_size: 32  # 20
