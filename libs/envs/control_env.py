@@ -10,9 +10,9 @@ class NSControlEnvMatlab:
     def __init__(self, args):
         self.args = args
         self.Re = args.Re
-        self.nu = 1 / 0.32500000E+04
+        self.nu = 3.076923076923077e-04
         self.default_re = 178.1899
-        if self.Re is not None:
+        if self.Re > 0:
             self.nu = self.nu * (self.default_re / self.Re)
         self.control_timestep = args.control_timestep
         self.detect_plane = args.detect_plane
@@ -64,8 +64,9 @@ class NSControlEnvMatlab:
         self.DD[-1, -1] += 1 / (self.y[self.Ny-1] - self.y[self.Ny-2]) / (self.yg[self.Ny] - self.yg[self.Ny-1])
         
         '''
-        Calculate initialized mean bulk velocity
+        Calculate initialized variables
         '''
+        
         self.meanU0 = self.cal_bulk_v()
         print(f"Initially, the divergence is {self.reward_div()}.")
         init_p = self.cal_pressure()
@@ -74,7 +75,33 @@ class NSControlEnvMatlab:
         self.speed_max = max(self.U.max(), self.V.max(), self.W.max())
         self.p_min = max(-2.0, init_p.min())
         self.p_max = min(init_p.max(), 1.5)
-        self.info_init = None
+        self.info_init = self.fill_info_init()
+    
+    def fill_info_init(self):
+        p1, p2 = self.get_boundary_pressures()
+        div = self.reward_div()
+        dpdx_finite_difference = self.cal_dpdx_finite_difference(p2)
+        u_velocity = self.cal_bulk_v()
+        v_velocity = self.cal_velocity_mean('V', sample_index=None)
+        w_velocity = self.cal_velocity_mean('W', sample_index=None)
+        pressure_mean = p2.mean()
+        gt_diff = self.reward_gt()
+        speed_norm = self.cal_speed_norm()
+        shear_stress = self.cal_shear_stress()
+        done = False
+        info = {
+                'drag_reduction/1_shear_stress': shear_stress,
+                'drag_reduction/2_1_mass_flow': u_velocity,
+                'drag_reduction/2_2_v_velocity': v_velocity,
+                'drag_reduction/2_3_w_velocity': w_velocity,
+                'drag_reduction/3_1_pressure_mean': pressure_mean,
+                'drag_reduction/3_2_dPdx_finite_difference': dpdx_finite_difference,
+                'drag_reduction/3_3_dPdx_reverse_cal': self.dPdx,
+                'drag_reduction/4_1_-|divergence|': div, 
+                'drag_reduction/4_2_-|now - unnoised| ÷ ｜now|': gt_diff, 
+                'drag_reduction/4_4_speed_norm': speed_norm,
+                }
+        return info
         
     def add_random_noise(self, noise_scale, overwrite=False):
         if overwrite:
@@ -248,8 +275,7 @@ class NSControlEnvMatlab:
 
     def cal_relative_info(self, info):
         if self.info_init is None:
-            self.info_init = info
-            return {}
+            assert "self.info_init must be initialized when env is created!"
         else:
             relative_dict = {}
             for one_k in info:
@@ -356,9 +382,7 @@ class NSControlEnvMatlab:
         # Update state, calculate reward, check termination condition, etc.
         # Return the next state, reward, termination flag, and additional info
         prev_U, prev_V, prev_W = self.U.copy(), self.V.copy(), self.W.copy()
-        for i in range(2):
-            # applied_opV1 = opV1 * 0  # apply half control
-            self.step_rk3(opV1, opV2)
+        self.step_rk3(opV1, opV2)
         p1, p2 = self.get_boundary_pressures()
         div = self.reward_div()
         dpdx_finite_difference = self.cal_dpdx_finite_difference(p2)
@@ -366,8 +390,6 @@ class NSControlEnvMatlab:
         v_velocity = self.cal_velocity_mean('V', sample_index=None)
         w_velocity = self.cal_velocity_mean('W', sample_index=None)
         pressure_mean = p2.mean()
-        gt_diff = self.reward_gt()
-        speed_diff = self.reward_td(prev_U, prev_V, prev_W)
         speed_norm = self.cal_speed_norm()
         shear_stress = self.cal_shear_stress()
         done = False
@@ -379,11 +401,9 @@ class NSControlEnvMatlab:
                 'drag_reduction/3_1_pressure_mean': pressure_mean,
                 'drag_reduction/3_2_dPdx_finite_difference': dpdx_finite_difference,
                 'drag_reduction/3_3_dPdx_reverse_cal': self.dPdx,
-                'drag_reduction/4_1_-|divergence|': div, 
-                'drag_reduction/4_2_-|now - unnoised| ÷ ｜now|': gt_diff, 
-                'drag_reduction/4_3_-|now - prev| ÷ |now|': speed_diff, 
+                'drag_reduction/4_1_-|divergence|': div,
                 'drag_reduction/4_4_speed_norm': speed_norm,
-                }
+        }
         norm_info = self.cal_relative_info(info)
         info.update(norm_info)
         return p2, div, done, info

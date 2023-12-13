@@ -91,6 +91,7 @@ def run_control(args, observer_model=None, policy_model=None, train_dataset=None
     '''
     Create env.
     '''
+    
     print("Initialization env...")
     if args.env_name == 'NSControlEnv2D':
         env_class = NSControlEnv2D
@@ -105,6 +106,7 @@ def run_control(args, observer_model=None, policy_model=None, train_dataset=None
     '''
     Setup data.
     '''
+    
     if args.collect_data:
         collect_data_folder = os.path.join(args.output_dir, args.exp_name)
         os.makedirs(collect_data_folder, exist_ok=True)
@@ -122,6 +124,7 @@ def run_control(args, observer_model=None, policy_model=None, train_dataset=None
     '''
     Main control loop.
     '''
+    
     pressure_v, opV2_v, top_view_v, front_view_v, side_view_v, all_p_boundary, all_v_boundary = [], [], [], [], [], [], []
     metadata = {}
     all_u_field, all_v_field, all_w_field = [], [], []

@@ -2,7 +2,7 @@ DATA_FOLDER: './outputs/61-revise-boundary-with-reynolds'
 ntrain: 280
 ntest: 20
 project_name: 'control_v2'
-exp_name: '0071-new-solver'
+exp_name: '0075-new-solver-fixs'
 path_name: planes_channel180_minchan
 run_control: true
 display_variables:
@@ -34,7 +34,7 @@ w_weight: 0.0
 x_range: 32
 y_range: 32
 fix_flow: true
-Re: 180
+Re: -1  # use default Re
 bc_type: original
 
 # policy setups
@@ -48,7 +48,7 @@ policy_name:
   # - fno
 rand_scale: 1
 reward_type: mse
-collect_data: true  # collect dataset
+collect_data: false  # collect dataset
 collect_start: 0  # wait for some initialization steps
 full_field: true  # predict the full velocity field
 dump_state: false  # used to produce different initialization conditions
@@ -80,7 +80,7 @@ output_dir: ./outputs
 width: 34  # 32 by default
 batch_size: 32
 layer_num: 1
-close_wandb: false
+close_wandb: true
 epochs: 100
 control_timestep: 10000
 
