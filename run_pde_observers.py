@@ -76,6 +76,7 @@ def main(args, sample_data=False, train_shuffle=True):
     ################################################################
     # create observer model
     ################################################################
+    
     if args.model_name == 'FNO2dObserverOld':
         observer_model = FNO2dObserverOld(args.modes, args.modes, args.width, use_v_plane=args.use_v_plane).cuda()
     elif args.model_name == 'FNO2dObserver':
@@ -96,6 +97,7 @@ def main(args, sample_data=False, train_shuffle=True):
     ################################################################
     # create policy model
     ################################################################
+    
     if args.policy_name == 'optimal-observer':
         policy_model = None
     elif args.policy_name in ['gt', 'rand', 'unmanipulated', 'rno', 'fno']:
@@ -108,8 +110,9 @@ def main(args, sample_data=False, train_shuffle=True):
         raise RuntimeError()
     
     ################################################################
-    # training and evaluation
+    # training and validation
     ################################################################
+    
     optimizer = Adam(observer_model.parameters(), lr=args.learning_rate, weight_decay=args.weight_decay)
     output_path = './outputs/'
     output_path += args.path_name
@@ -179,6 +182,7 @@ def main(args, sample_data=False, train_shuffle=True):
                     wandb.log(metrics)
         elif args.dataset_name == 'FullFieldNSDataset':
             for step, (v_plane, v_field, re) in enumerate(tqdm(train_loader)):
+                import pdb; pdb.set_trace()
                 v_plane, v_field, re = v_plane.cuda().float(), v_field.cuda().float(), re.cuda().float()
                 v_plane = torch.einsum('btxy -> bxyt', v_plane).unsqueeze(-1)
                 train_num += len(v_plane)
@@ -198,7 +202,6 @@ def main(args, sample_data=False, train_shuffle=True):
                     target_one_plane = train_dataset.v_field_norm.cuda_decode(target_one_plane)
                     target_field.append(target_one_plane)
                 target = torch.stack(target_field, dim=2)
-                # pref_field_decoded, target: 
                 loss = myloss(pref_field_decoded.reshape(args.batch_size, -1), target.reshape(args.batch_size, -1))
                 loss.backward()
                 optimizer.step()
@@ -294,6 +297,11 @@ def main(args, sample_data=False, train_shuffle=True):
         
         if not args.close_wandb:
             wandb.log(avg_metrics)
+    
+        
+    ################################################################
+    # run control loop to evaluate trained model and exit program
+    ################################################################
     
     if args.run_control:
         print("Running control")

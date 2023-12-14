@@ -25,9 +25,11 @@ from pympler import tracker
 
 
 def run_control(args, observer_model=None, policy_model=None, train_dataset=None, wandb_exist=False):
-    '''
-    Policy settings.
-    '''
+    
+    ################################################################
+    # policy settings
+    ################################################################
+    
     if observer_model is not None:
         device = next(observer_model.parameters()).device
     else:
@@ -89,11 +91,11 @@ def run_control(args, observer_model=None, policy_model=None, train_dataset=None
         wandb.define_metric("control_timestep")
         wandb.define_metric("drag_reduction/*", step_metric="control_timestep")
         wandb.define_metric("drag_reduction_relative/*", step_metric="control_timestep")
-        
-    '''
-    Create env.
-    '''
-    
+     
+    ################################################################
+    # create env
+    ################################################################
+ 
     print("Initialization env...")
     if args.env_name == 'NSControlEnv2D':
         env_class = NSControlEnv2D
@@ -105,10 +107,10 @@ def run_control(args, observer_model=None, policy_model=None, train_dataset=None
         raise RuntimeError("Not supported environment!")
     print("Environment is initialized!")
     
-    '''
-    Setup data.
-    '''
-    
+    ################################################################
+    # setup data
+    ################################################################
+ 
     if args.collect_data:
         collect_data_folder = os.path.join(args.output_dir, args.exp_name)
         os.makedirs(collect_data_folder, exist_ok=True)
@@ -123,9 +125,9 @@ def run_control(args, observer_model=None, policy_model=None, train_dataset=None
     else:
         demo_dataset = None
 
-    '''
-    Main control loop.
-    '''
+    ################################################################
+    # main control loop
+    ################################################################
     
     pressure_v, opV2_v, top_view_v, front_view_v, side_view_v, all_p_boundary, all_v_boundary = [], [], [], [], [], [], []
     metadata = {}
@@ -135,7 +137,7 @@ def run_control(args, observer_model=None, policy_model=None, train_dataset=None
         if args.policy_name in ['fno', 'rno']:  # neural policies
             p1, p2 = control_env.get_boundary_pressures()
             side_pressure = torch.tensor(p2)
-            side_pressure = demo_dataset.p_norm.encode(side_pressure).cuda()
+            side_pressure = demo_dataset.p_plane_norm.encode(side_pressure).cuda()
             side_pressure = side_pressure.reshape(-1, args.x_range, args.y_range, 1).float()
         if args.policy_name == 'rand':
             opV2 = control_env.rand_control()
@@ -229,10 +231,7 @@ def run_control(args, observer_model=None, policy_model=None, train_dataset=None
             # print("Initialization done ... ")
             control_env.reset_init()
 
-        '''
-        Collect data when needed
-        '''
-        
+        # Collect data when needed
         mean_num = 100
         if args.collect_data and i > args.collect_start:
             idx_str = str(i).zfill(6)
@@ -305,9 +304,9 @@ def run_control(args, observer_model=None, policy_model=None, train_dataset=None
             print_info = f"dPdx: {info['drag_reduction/3_3_dPdx_reverse_cal']:.7f}; DR: {1 - info['drag_reduction_relative/3_3_dPdx_reverse_cal']:.4f}"
             pbar.set_description(print_info)
 
-    '''
-    Save visualization results.
-    '''
+    ################################################################
+    # save visualization results.
+    ################################################################
     
     if args.vis_interval != -1:
         exp_dir = os.path.join(args.output_dir, exp_name)

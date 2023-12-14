@@ -1,8 +1,8 @@
-DATA_FOLDER: './outputs/61-revise-boundary-with-reynolds'
+DATA_FOLDER: './outputs/0076-gen-data'
 ntrain: 280
 ntest: 20
 project_name: 'control_v2'
-exp_name: '0075-new-solver-fixs'
+exp_name: '0076-gen-data'
 path_name: planes_channel180_minchan
 run_control: true
 display_variables:
@@ -39,21 +39,22 @@ bc_type: original
 
 # policy setups
 policy_name:
-  - gt
+  # - gt
   # - rand
   # - unmanipulated
-  # - rno
+  - rno
   # - optimal-policy-observer
   # - optimal-observer
   # - fno
 rand_scale: 1
 reward_type: mse
-collect_data: false  # collect dataset
+collect_data: true  # collect dataset
 collect_start: 0  # wait for some initialization steps
 full_field: true  # predict the full velocity field
 dump_state: false  # used to produce different initialization conditions
 
 # learning settings
+pde_loss_weight: 1.0  # open physics-informed learning for a pde loss > 0
 use_spectral_conv: false
 learning_rate: 0.001
 weight_decay: 0.0001
@@ -80,7 +81,7 @@ output_dir: ./outputs
 width: 34  # 32 by default
 batch_size: 32
 layer_num: 1
-close_wandb: false
+close_wandb: true
 epochs: 100
 control_timestep: 1000
 

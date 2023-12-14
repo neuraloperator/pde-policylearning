@@ -1,4 +1,4 @@
-function [Fu, Fv, Fw] = compute_RHS(U, V, W,nu,dx,dz,y,ym,yg,Ny,dPdx)
+function [Fu, Fv, Fw] = compute_RHS(U, V, W, nu, dx, dz, y, ym, yg, Ny, dPdx)
 %% Find RHS of the 3D-NS equation
 % Fu = -d(uu)/dx -d(uv)/dy -d(uw)/dz + 1/Re*(du/dx + du/dy + du/dz)
 % Fv = -d(uv)/dx -d(vv)/dy -d(vw)/dz + 1/Re*(dv/dx + dv/dy + dv/dz)
@@ -80,6 +80,4 @@ for i = 2:Ny
 end
 % compute nu*d^2w/dz^2
 Fw = Fw + nu * ( W(:,:,[2:end,1]) - 2*W + W(:,:,[end,1:end-1]) )/dz^2;
-
-
 end
