@@ -71,7 +71,7 @@ def run_control(args, observer_model=None, policy_model=None, train_dataset=None
         "detect_plane": args.detect_plane,
         "test_plane": args.test_plane,
         "bc_type": args.bc_type,
-        "pde_loss_weight": args.pde_loss_weight2,
+        "pde_loss_weight": args.pde_loss_weight,
         "Re": args.Re}
 
     exp_name = ""
