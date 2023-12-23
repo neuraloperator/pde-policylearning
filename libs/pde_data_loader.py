@@ -144,6 +144,7 @@ class FullFieldNSDataset(Dataset):
         self.downsample_rate, self.x_range, self.y_range = downsample_rate, x_range, y_range
         self.metadata = np.load(os.path.join(data_folder, 'metadata.npy'), allow_pickle=True).tolist()
         self.re = torch.tensor(self.metadata['re'])
+        self.dpdx_all = self.metadata['U_field']['dpdx']
         self.file_list = os.listdir(data_folder)
         u_field_name, v_field_name, w_field_name = 'U_field', 'V_field', 'W_field'
         self.u_field_files = sorted([onef for onef in self.file_list if u_field_name in onef])
@@ -167,10 +168,17 @@ class FullFieldNSDataset(Dataset):
 
     def __getitem__(self, index):
         seq_v_plane, seq_v_field = [], []
+        seq_u, seq_v, seq_w, seq_dpdx, seq_re = [], [], [], [], []
         for cur_t in range(self.timestep):
             cur_index = self.data_index[index * self.timestep + cur_t]
-            all_v_field = np.load(os.path.join(self.data_folder, self.v_field_files[cur_index]))
-            all_v_field = torch.tensor(all_v_field)
+            one_dpdx = self.dpdx_all[cur_index]
+            seq_dpdx.append(one_dpdx)
+            all_v_field = torch.tensor(np.load(os.path.join(self.data_folder, self.v_field_files[cur_index])))
+            seq_v.append(all_v_field)
+            all_u_field = torch.tensor(np.load(os.path.join(self.data_folder, self.u_field_files[cur_index])))
+            seq_u.append(all_u_field)
+            all_w_field = torch.tensor(np.load(os.path.join(self.data_folder, self.w_field_files[cur_index])))
+            seq_w.append(all_w_field)
             v_plane = self.bound_v_norm.encode(all_v_field[:, -1, :])
             target_v_field = []
             for plane_id in self.plane_indexs:
@@ -179,6 +187,12 @@ class FullFieldNSDataset(Dataset):
             target_v_field = torch.stack(target_v_field)
             seq_v_plane.append(v_plane)
             seq_v_field.append(target_v_field)
+            seq_re.append(self.re)
         seq_v_plane = torch.stack(seq_v_plane)  # [T, X, Y]
         seq_v_field = torch.stack(seq_v_field)  # [T, P (plane num), X, Y]
-        return seq_v_plane, seq_v_field, self.re
+        seq_u = torch.stack(seq_u)
+        seq_v = torch.stack(seq_v)
+        seq_w = torch.stack(seq_w)
+        seq_re = torch.tensor(seq_re)
+        seq_dpdx = torch.tensor(seq_dpdx)
+        return seq_v_plane, seq_v_field, seq_u, seq_v, seq_w, seq_re, seq_dpdx

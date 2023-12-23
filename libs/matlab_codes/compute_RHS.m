@@ -17,7 +17,7 @@ end
 % compute -d(uw)/dz 
 UW = (0.5*(W + W([end,1:end-1],:,:))).*(0.5*(U + U(:,:,[end,1:end-1])));
 Fu = Fu - (UW(:,:,[2:end,1]) - UW)/dz;
-% compute 1/Re*d^2u/dx^2 
+% compute 1/Re*d^2u/dx^2
 Fu = Fu + nu * ( U([2:end,1],:,:) - 2*U + U([end,1:end-1],:,:) )/dx^2;
 % compute 1/Re*d^2u/dz^2
 for i = 2:Ny

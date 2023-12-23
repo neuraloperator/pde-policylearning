@@ -12,6 +12,8 @@ from libs.models.fno_models import *
 from libs.models.rno_models import RNO2dObserver
 from libs.models.pino_models import PINObserverFullField, PolicyModel2D
 from libs.models.transformer_models import *
+from libs.envs.control_env import NSControlEnvMatlab
+from libs.envs.ns_control_2d import NSControlEnv2D
 from libs.visualization import *
 from libs.pde_data_loader import *
 from libs.arguments import *
@@ -43,6 +45,22 @@ def main(args, sample_data=False, train_shuffle=True):
         return
     args.using_transformer = 'Transformer' in args.model_name
     assert args.model_name in ['UNet', 'RNO2dObserver', 'PINObserverFullField', 'FNO2dObserverOld', 'FNO2dObserver', 'Transformer2D'],  "Model not supported!"
+    
+    ################################################################
+    # create env when using physics-informed learning
+    ################################################################
+ 
+    if args.pde_loss_weight > 0:
+        print("Initialization env for physics-informed learning ...")
+        if args.env_name == 'NSControlEnv2D':
+            env_class = NSControlEnv2D
+            control_env = env_class(args, detect_plane=args.detect_plane, bc_type=args.bc_type)
+        elif args.env_name == 'NSControlEnvMatlab':
+            env_class = NSControlEnvMatlab
+            control_env = env_class(args)
+        else:
+            raise RuntimeError("Not supported environment!")
+        print("Environment is initialized!")
     
     ################################################################
     # make dataset
@@ -170,7 +188,6 @@ def main(args, sample_data=False, train_shuffle=True):
                 out_decoded = train_dataset.v_norm.cuda_decode(pred_field_raw)
                 v_plane = v_plane.squeeze()
                 v_plane_decoded = train_dataset.v_norm.cuda_decode(v_plane)
-                # loss = myloss(out.view(args.batch_size, -1), v_plane.view(args.batch_size, -1))
                 loss = myloss(out_decoded.view(args.batch_size, -1), v_plane_decoded.view(args.batch_size, -1))
                 loss.backward()
                 optimizer.step()
@@ -181,9 +198,9 @@ def main(args, sample_data=False, train_shuffle=True):
                     # Log train metrics to wandb 
                     wandb.log(metrics)
         elif args.dataset_name == 'FullFieldNSDataset':
-            for step, (v_plane, v_field, re) in enumerate(tqdm(train_loader)):
-                import pdb; pdb.set_trace()
-                v_plane, v_field, re = v_plane.cuda().float(), v_field.cuda().float(), re.cuda().float()
+            for step, (v_plane, v_field, seq_u, seq_v, seq_w, seq_re, seq_dpdx) in enumerate(tqdm(train_loader)):
+                v_plane, v_field, re = v_plane.cuda().float(), v_field.cuda().float(), seq_re.cuda().float()
+                seq_u, seq_v, seq_w, seq_dpdx = seq_u.cuda().float(), seq_v.cuda().float(), seq_w.cuda().float(), seq_dpdx.cuda().float()
                 v_plane = torch.einsum('btxy -> bxyt', v_plane).unsqueeze(-1)
                 train_num += len(v_plane)
                 optimizer.zero_grad()
@@ -194,7 +211,7 @@ def main(args, sample_data=False, train_shuffle=True):
                     cur_pred = pred_field_raw[:, :, plane_index, :, :]
                     cur_pred = train_dataset.bound_v_norm.cuda_decode(cur_pred)
                     pred_field_decoded.append(cur_pred)
-                pref_field_decoded = torch.stack(pred_field_decoded, dim=2)
+                pred_field_decoded = torch.stack(pred_field_decoded, dim=2)
                 # v_field: [bs, feat dim, plane, x, y]
                 target_field = []
                 for plane_index in range(len(train_dataset.plane_indexs)):
@@ -202,7 +219,16 @@ def main(args, sample_data=False, train_shuffle=True):
                     target_one_plane = train_dataset.v_field_norm.cuda_decode(target_one_plane)
                     target_field.append(target_one_plane)
                 target = torch.stack(target_field, dim=2)
-                loss = myloss(pref_field_decoded.reshape(args.batch_size, -1), target.reshape(args.batch_size, -1))
+                data_loss = myloss(pred_field_decoded.reshape(args.batch_size, -1), target.reshape(args.batch_size, -1))
+                pred_full_field_v = seq_v.clone()  # it's okay to not clone as well
+                for idx, plane_index in enumerate(train_dataset.plane_indexs):
+                    pred_full_field_v[:, :, :, plane_index, :] = pred_field_decoded[:, :, idx, :, :]
+                pde_loss = 0
+                if args.pde_loss_weight > 0:
+                    for i in range(len(seq_u)):
+                        cur_pde_loss = control_env.pde_loss(seq_u[i].squeeze(), pred_full_field_v[i].squeeze(), seq_w[i].squeeze(), seq_dpdx[i].squeeze())
+                        pde_loss += cur_pde_loss
+                loss = data_loss + pde_loss * args.pde_loss_weight
                 loss.backward()
                 optimizer.step()
                 train_l2 += loss.item()
@@ -239,15 +265,14 @@ def main(args, sample_data=False, train_shuffle=True):
                     v_plane = v_plane.squeeze()
                     p_plane_decoded = train_dataset.p_norm.cuda_decode(p_plane)
                     v_plane_decoded = train_dataset.v_norm.cuda_decode(v_plane)
-                    # test_loss = myloss(out.view(args.batch_size, -1), v_plane.view(args.batch_size, -1)).item()
                     test_loss = myloss(out_decoded.view(args.batch_size, -1), v_plane_decoded.view(args.batch_size, -1)).item()
                     test_l2 += test_loss
                     test_metrics = {"test/test_loss": test_loss / args.batch_size}
                     if not args.close_wandb:
                         wandb.log(test_metrics)
             elif args.dataset_name == 'FullFieldNSDataset':
-                for step, (v_plane, v_field, re) in enumerate(tqdm(test_loader)):
-                    v_plane, v_field, re = v_plane.cuda().float(), v_field.cuda().float(), re.cuda().float()
+                for step, (v_plane, v_field, seq_u, seq_v, seq_w, seq_re, seq_dpdx) in enumerate(tqdm(test_loader)):
+                    v_plane, v_field, re = v_plane.cuda().float(), v_field.cuda().float(), seq_re.cuda().float()
                     v_plane = torch.einsum('btxy -> bxyt', v_plane).unsqueeze(-1)
                     test_num += len(v_plane)
                     pred_field_raw = observer_model(v_plane, re)
@@ -257,7 +282,7 @@ def main(args, sample_data=False, train_shuffle=True):
                         cur_pred = pred_field_raw[:, :, plane_index, :, :]
                         cur_pred = train_dataset.bound_v_norm.cuda_decode(cur_pred)
                         pred_field_decoded.append(cur_pred)
-                    pref_field_decoded = torch.stack(pred_field_decoded, dim=2)
+                    pred_field_decoded = torch.stack(pred_field_decoded, dim=2)
                     target_field = []
                     # v_field: [bs, feat dim, plane, x, y]
                     for plane_index in range(len(train_dataset.plane_indexs)):
@@ -266,7 +291,7 @@ def main(args, sample_data=False, train_shuffle=True):
                         target_field.append(target_one_plane)
                     target = torch.stack(target_field, dim=2)
                     target = train_dataset.v_field_norm.cuda_decode(v_field)
-                    test_loss = myloss(pref_field_decoded.reshape(args.batch_size, -1), target.reshape(args.batch_size, -1)).item()
+                    test_loss = myloss(pred_field_decoded.reshape(args.batch_size, -1), target.reshape(args.batch_size, -1)).item()
                     test_l2 += test_loss
                     test_metrics = {"test/test_loss": test_loss / args.batch_size}
                     if not args.close_wandb:
@@ -276,7 +301,7 @@ def main(args, sample_data=False, train_shuffle=True):
         test_l2 /= test_num
         t2 = default_timer()
         # # save data into disk
-        # data = {'gt': target.cpu().numpy(), 'pred': pref_field_decoded.cpu().numpy(),}
+        # data = {'gt': target.cpu().numpy(), 'pred': pred_field_decoded.cpu().numpy(),}
         # io.savemat(f'{ep}.mat', data)
         
         if test_l2 < best_loss:

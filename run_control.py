@@ -70,7 +70,8 @@ def run_control(args, observer_model=None, policy_model=None, train_dataset=None
         "init_cond_path": args.init_cond_path, 
         "detect_plane": args.detect_plane,
         "test_plane": args.test_plane,
-        "bc_type": args.bc_type, 
+        "bc_type": args.bc_type,
+        "pde_loss_weight": args.pde_loss_weight2,
         "Re": args.Re}
 
     exp_name = ""
@@ -91,7 +92,7 @@ def run_control(args, observer_model=None, policy_model=None, train_dataset=None
         wandb.define_metric("control_timestep")
         wandb.define_metric("drag_reduction/*", step_metric="control_timestep")
         wandb.define_metric("drag_reduction_relative/*", step_metric="control_timestep")
-     
+
     ################################################################
     # create env
     ################################################################
@@ -131,7 +132,7 @@ def run_control(args, observer_model=None, policy_model=None, train_dataset=None
     
     pressure_v, opV2_v, top_view_v, front_view_v, side_view_v, all_p_boundary, all_v_boundary = [], [], [], [], [], [], []
     metadata = {}
-    all_u_field, all_v_field, all_w_field = [], [], []
+    all_u_field, all_v_field, all_w_field, all_dpdx = [], [], [], []
     for i in (pbar := tqdm(range(args.control_timestep + 1))):
         # pressure: [32, 32], opV2: [32, 32]
         if args.policy_name in ['fno', 'rno']:  # neural policies
@@ -232,7 +233,7 @@ def run_control(args, observer_model=None, policy_model=None, train_dataset=None
             control_env.reset_init()
 
         # Collect data when needed
-        mean_num = 100
+        mean_num = 100 
         if args.collect_data and i > args.collect_start:
             idx_str = str(i).zfill(6)
             # (0) save Reynold numbers
@@ -263,6 +264,8 @@ def run_control(args, observer_model=None, policy_model=None, train_dataset=None
                 metadata[field_name] = {}
                 metadata[field_name]['mean'] = np.array(all_u_field).mean(0)
                 metadata[field_name]['std'] = np.array(all_u_field).std(0)
+            all_dpdx.append(control_env.dPdx)
+            metadata[field_name]['dpdx'] = np.array(all_dpdx)
             # (4) save v field info
             field_name = 'V_field'
             np.save(os.path.join(collect_data_folder, f'{field_name}_{idx_str}.npy'), np.array(control_env.V))
@@ -305,7 +308,7 @@ def run_control(args, observer_model=None, policy_model=None, train_dataset=None
             pbar.set_description(print_info)
 
     ################################################################
-    # save visualization results.
+    # save visualization results and finish the program.
     ################################################################
     
     if args.vis_interval != -1:
@@ -321,9 +324,9 @@ def run_control(args, observer_model=None, policy_model=None, train_dataset=None
     if not args.close_wandb and not wandb_exist:
         wandb.finish()
     
-    # Analyzing memory
-    print("memory consumption info:")
-    summary.print_(summary.summarize(muppy.get_objects()))
+    # # analyzing memory
+    # print("memory consumption info:")
+    # summary.print_(summary.summarize(muppy.get_objects()))
 
 
 if __name__ == '__main__':

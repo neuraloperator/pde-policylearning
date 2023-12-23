@@ -115,10 +115,10 @@ class NSControlEnvMatlab:
             self.W += np.random.normal(scale=noise_scale, size=self.W.shape)
         return
     
-    '''
-    Save and load state.
-    '''
-    
+    ################################################################
+    # save and load state
+    ################################################################
+
     def dump_state(self, save_path):
         mat_data = {
             'x': np.array(self.x),
@@ -166,11 +166,11 @@ class NSControlEnvMatlab:
             self.U = mat_data['U']
             self.V = mat_data['V']
             self.W = mat_data['W']
-        
-    '''
-    Calculating scores.
-    '''  
-    
+
+    ################################################################
+    # calculating scores
+    ################################################################
+
     def cal_div(self):
         div = np.zeros((self.Nx, self.Ny - 1, self.Nz))
         for j in range(self.Ny - 1):
@@ -276,10 +276,9 @@ class NSControlEnvMatlab:
                 relative_dict[new_k] = info[one_k] / self.info_init[one_k]
             return relative_dict
     
-
-    '''
-    Visualizations
-    '''
+    ################################################################
+    # visualizations
+    ################################################################
     
     def vis_state(self, vis_img=False, sample_slice_top=15, sample_slice_others=10):
         pressure = self.cal_pressure()
@@ -339,9 +338,9 @@ class NSControlEnvMatlab:
         wandb.log(info)
         return
     
-    '''
-    Control policies.
-    '''
+    ################################################################
+    # control policies
+    ################################################################
     
     def reset_init(self):
         self.info_init = None
@@ -369,7 +368,123 @@ class NSControlEnvMatlab:
         to_m(self.y), to_m(self.ym), to_m(self.yg), to_m(self.dx), to_m(self.dz), to_m(self.dt), to_m(self.kxx), to_m(self.kzz), \
             to_m(self.Nx), to_m(self.Ny), to_m(self.Nz), to_m(self.DD), nargout=4)
         self.U, self.V, self.W, self.dPdx = np.array(U), np.array(V), np.array(W), np.array(dPdx).item()
+
+    ################################################################
+    # for physcis informed learning
+    ################################################################
+    
+    def pde_loss(self, U, V, W, dPdx):
+        # Find RHS of the 3D-NS equation
+        # Fu = np.zeros_like(U)
+        # Fv = np.zeros_like(V)
+        # Fw = np.zeros_like(W)
+        # Prepare variables
+        dx = torch.tensor(self.dx).to(U.device)
+        dz = torch.tensor(self.dz).to(U.device)
+        yg = torch.tensor(self.yg).to(U.device)
+        y = torch.tensor(self.y).to(U.device)
+        ym = torch.tensor(self.ym).to(U.device)
+
+        ################################################################
+        # Compute Fu
+        ################################################################
+    
+        # Compute -d(uu)/dx
+        UU = (0.5 * (U + torch.cat([U[1:, :, :], U[0, :, :][None, :]], dim=0)))**2
+        Fu = - (UU - torch.cat([U[-1, :, :][None, :], U[:-1, :, :]], dim=0)) / dx
         
+        # Compute -d(uv)/dy
+        UV = (0.5 * (V + torch.cat([V[-1, :, :][None, :], V[:-1, :, :]], dim=0))) * (0.5 * (U[:, :-1, :] + U[:, 1:, :]))
+        for i in range(1, self.Ny):
+            Fu[:, i, :] -= (UV[:, i, :] - UV[:, i-1, :]) / (y[i] - y[i-1])
+        
+        # Compute -d(uw) / dz
+        UW = (0.5 * (W + torch.cat([W[-1, :, :][None, :, :], W[:-1, :, :]], dim=0))) * (0.5 * (U + torch.cat([U[:, :, -1][:, :, None], U[:, :, :-1]], dim=2)))
+        Fu -= (torch.cat([UW[:, :, 1:], UW[:, :, 0][:, :, None]], dim=2) - UW)  / dz
+        
+        # Compute 1/Re*d^2u/dx^2
+        Fu += self.nu * (torch.cat([U[1:, :, :], U[0, :, :][None, :, :]], dim=0) - 2 * U + torch.cat([U[-1, :, :][None, :, :], U[:-1, :, :]], dim=0)) / dx**2
+
+        # Compute 1/Re*d^2u/dy^2
+        for i in range(1, self.Ny):
+            Fu[:, i, :] += self.nu * (
+                (U[:, i + 1, :] - U[:, i, :]) / (yg[i + 1] - yg[i]) -
+                (U[:, i, :] - U[:, i - 1, :]) / (yg[i] - yg[i - 1])
+            ) / (y[i] - y[i - 1])
+
+        # Compute 1/Re*d^2u/dz^2
+        Fu += self.nu * (torch.cat([U[:, :, 1:], U[:, :, 0][:, :, None]], dim=2) - 2 * U + torch.cat([U[:, :, -1][:, :, None], U[:, :, :-1]], dim=2)) / dz**2
+
+        # Add pressure gradient
+        Fu += dPdx / 2
+
+        ################################################################
+        # Compute Fv
+        ################################################################
+        
+        # Compute -d(uv)/dx
+        UV = (0.5 * (V + torch.cat([V[-1, :, :][None, :, :], V[:-1, :, :]], dim=0))) * (0.5 * (U[:, :-1, :] + U[:, 1:, :]))
+        Fv = - (torch.cat([UV[1:, :, :], UV[0, :, :][None, :, :]], dim=0) - UV) / dx
+
+        # Compute -d(vv)/dy
+        VV = (0.5 * (V[:, :-1, :] + V[:, 1:, :]))**2
+        for i in range(1, self.Ny - 1):
+            Fv[:, i, :] -= (VV[:, i, :] - VV[:, i-1, :]) / (ym[i] - ym[i-1])
+
+        # Compute -d(vw)/dz
+        VW = (0.5 * (V + torch.cat([V[:, :, -1][:, :, None], V[:, :, :-1]], dim=2))) * (0.5 * (W[:, :-1, :] + W[:, 1:, :]))
+        Fv -= (torch.cat([VW[:, :, 1:], VW[:, :, 0][:, :, None]], dim=2) - VW) / dz
+        
+        # Compute nu*d^2v/dx^2
+        Fv += self.nu * (torch.cat([V[1:, :, :], V[0, :, :][None, :, :]], dim=0) - 2 * V + torch.cat([V[-1, :, :][None, :, :], V[:-1, :, :]], dim=0)) / dx**2
+
+        # Compute nu*d^2v/dy^2
+        for i in range(1, self.Ny - 1):
+            Fv[:, i, :] += self.nu * (
+                (V[:, i + 1, :] - V[:, i, :]) / (y[i + 1] - y[i]) -
+                (V[:, i, :] - V[:, i - 1, :]) / (y[i] - y[i - 1])
+            ) / (ym[i] - ym[i - 1])
+
+        # Compute nu*d^2w/dz^2
+        Fv += self.nu * (torch.cat([V[:, :, 1:], V[:, :, 0][:, :, None]], dim=2) - 2 * V + torch.cat([V[:, :, -1][:, :, None], V[:, :, :-1]], dim=2)) / dz**2
+
+        ################################################################
+        # Compute Fw
+        ################################################################
+        
+        # Compute -d(uw)/dx
+        UW = (0.5 * (W + torch.cat([W[-1, :, :][None, :, :], W[:-1, :, :]], dim=0))) * (0.5 * (U + torch.cat([U[:, :, -1][:, :, None], U[:, :, :-1]], dim=-1)))
+        Fw = - (torch.cat([UW[1:, :, :], UW[0, :, :][None, :, :]], dim=0) - UW) / dx
+
+        # Compute -d(vw)/dy
+        VW = (0.5 * (V + torch.cat([V[:, :, -1][:, :, None], V[:, :, :-1]], dim=-1))) * (0.5 * (W[:, :-1, :] + W[:, 1:, :]))
+        for i in range(1, self.Ny):
+            Fw[:, i, :] -= (VW[:, i, :]- VW[:, i-1, :]) / (y[i] - y[i - 1])
+
+        # Compute -d(ww)/dz
+        WW = (0.5 * (W + torch.cat([W[:, :, :-1], W[:, :, -1][:, :, None]], dim=2)))**2
+        Fw -= (WW - torch.cat([WW[:, :, -1][:, :, None], WW[:, :, :-1]], dim=2)) / dz
+
+        # Compute nu*d^2w/dx^2
+        Fw += self.nu * (torch.cat([W[1:, :, :], W[0, :, :][None, :, :]], dim=0) - 2 * W + torch.cat([W[-1, :, :][None, :, :], W[:-1, :, :]], dim=0)) / dx**2
+
+        # Compute nu*d^2w/dy^2
+        for i in range(1, self.Ny):
+            Fw[:, i, :] += self.nu * (
+                (W[:, i + 1, :] - W[:, i, :]) / (yg[i + 1] - yg[i]) -
+                (W[:, i, :] - W[:, i - 1, :]) / (yg[i] - yg[i - 1])
+            ) / (y[i] - y[i - 1])
+
+        # Compute nu*d^2w/dz^2
+        Fw += self.nu * (torch.cat([W[:, :, 1:], W[:, :, 0][:, :, None]], dim=-1)) - 2 * W + torch.cat([W[:, :, -1][:, :, None], W[:, :, :-1]], dim=-1) / dz**2
+        pde_loss = Fu.mean() + Fv.mean() + Fw.mean()
+        pde_loss = pde_loss.mean()
+        return pde_loss
+
+    ################################################################
+    # the step function
+    ################################################################
+    
     def step(self, opV1, opV2):
         # Perform one step in the environment
         # Update state, calculate reward, check termination condition, etc.

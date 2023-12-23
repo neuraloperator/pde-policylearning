@@ -7,6 +7,7 @@ path_name: planes_channel180_minchan
 run_control: true
 display_variables:
   - exp_name
+  - pde_loss_weight
   - bc_type
   - policy_name
   - control_timestep
@@ -40,9 +41,9 @@ bc_type: original
 # policy setups
 policy_name:
   # - gt
+  - rno
   # - rand
   # - unmanipulated
-  - rno
   # - optimal-policy-observer
   # - optimal-observer
   # - fno
@@ -54,7 +55,7 @@ full_field: true  # predict the full velocity field
 dump_state: false  # used to produce different initialization conditions
 
 # learning settings
-pde_loss_weight: 1.0  # open physics-informed learning for a pde loss > 0
+pde_loss_weight: 1  # open physics-informed learning for a pde loss > 0
 use_spectral_conv: false
 learning_rate: 0.001
 weight_decay: 0.0001
@@ -81,7 +82,7 @@ output_dir: ./outputs
 width: 34  # 32 by default
 batch_size: 32
 layer_num: 1
-close_wandb: true
+close_wandb: false
 epochs: 100
 control_timestep: 1000
 
