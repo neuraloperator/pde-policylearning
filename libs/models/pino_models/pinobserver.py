@@ -365,8 +365,7 @@ class PINObserverFullField(nn.Module):
         x = x.permute(0, 4, 1, 2, 3)  
         x = add_padding(x, num_pad=num_pad) # [b, f, x, y, 1]
         field_pred = self.observer_head(x,num_pad, re, self.multiplicative_net2) # [b, x, y, 1, p]
-        field_pred = field_pred.permute(0, 4, 1, 2, 3).unsqueeze(-1)
-        
+        field_pred = field_pred.permute(0, 4, 1, 2, 3) # [b, p, x, y, 1]
         # predict separate planes
         # field_pred = []
         # for cur_head in self.observer_head:

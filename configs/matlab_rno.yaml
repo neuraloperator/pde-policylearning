@@ -2,7 +2,7 @@ DATA_FOLDER: './outputs/0076-gen-data'
 ntrain: 280
 ntest: 20
 project_name: 'control_v2'
-exp_name: '0076-gen-data'
+exp_name: '0077-pino-pc-div-check'
 path_name: planes_channel180_minchan
 run_control: true
 display_variables:
@@ -41,21 +41,21 @@ bc_type: original
 # policy setups
 policy_name:
   # - gt
-  - rno
+  - optimal-observer
+  # - rno
   # - rand
   # - unmanipulated
   # - optimal-policy-observer
-  # - optimal-observer
   # - fno
 rand_scale: 1
 reward_type: mse
-collect_data: true  # collect dataset
+collect_data: false  # collect dataset
 collect_start: 0  # wait for some initialization steps
 full_field: true  # predict the full velocity field
 dump_state: false  # used to produce different initialization conditions
 
 # learning settings
-pde_loss_weight: 1  # open physics-informed learning for a pde loss > 0
+pde_loss_weight: -1  # open physics-informed learning for a pde loss > 0
 use_spectral_conv: false
 learning_rate: 0.001
 weight_decay: 0.0001
@@ -83,8 +83,8 @@ width: 34  # 32 by default
 batch_size: 32
 layer_num: 1
 close_wandb: false
-epochs: 100
-control_timestep: 1000
+epochs: 100     # 100
+control_timestep: 10000
 
 # # large model
 # batch_size: 32  # 20

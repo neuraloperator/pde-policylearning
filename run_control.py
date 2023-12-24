@@ -15,7 +15,6 @@ from libs.models.fno_models import *
 from libs.pde_data_loader import *
 from libs.visualization import *
 from libs.arguments import *
-# from libs.rk_algorithm import *
 from tqdm import tqdm
 import os
 import torch.optim as optim
@@ -171,7 +170,6 @@ def run_control(args, observer_model=None, policy_model=None, train_dataset=None
             optimizer = optim.Adam(policy_model.parameters(), lr=1e-4)
             res_opV2 = policy_model(p2, re)
             pred_v_field = observer_model(opV2 + res_opV2, re)
-            pred_v_field = torch.einsum('bxztk -> btxz', pred_v_field)
             reg_weight = 0.1
             initial_loss = torch.norm(pred_v_field) + reg_weight * torch.norm(opV2 + res_opV2)  # minimize this.
             print("Initial Loss:", initial_loss.item())
@@ -222,6 +220,7 @@ def run_control(args, observer_model=None, policy_model=None, train_dataset=None
                 loss = torch.norm(pred_field) + reg_weight * torch.norm(opV2) # minimize this.
                 loss.backward()  # Backpropagation
                 optimizer.step()  # Update the parameters
+            opV2 = opV2 - opV2.mean()
             opV2 = opV2.detach().cpu().numpy().squeeze()
         else:
             raise RuntimeError("Not supported policy name.")
@@ -283,8 +282,8 @@ def run_control(args, observer_model=None, policy_model=None, train_dataset=None
                 metadata[field_name]['mean'] = np.array(all_w_field).mean(0)
                 metadata[field_name]['std'] = np.array(all_w_field).std(0)
             np.save(os.path.join(collect_data_folder, f'metadata.npy'), metadata)
-        if control_env.reward_div() < -10:
-            raise RuntimeError("Control is bloded!")
+        if abs(control_env.reward_div()) > 10:
+            raise RuntimeError("Control exploded!")
         side_pressure, reward, done, info = control_env.step(opV1, opV2)
         
         if not args.close_wandb and i > 0:  # ignore the first iteration

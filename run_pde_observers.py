@@ -205,7 +205,7 @@ def main(args, sample_data=False, train_shuffle=True):
                 train_num += len(v_plane)
                 optimizer.zero_grad()
                 pred_field_raw = observer_model(v_plane, re)
-                pred_field_raw = torch.einsum('bpxztk -> btpxz', pred_field_raw)
+                pred_field_raw = torch.einsum('bpxzt -> btpxz', pred_field_raw)
                 pred_field_decoded = []
                 for plane_index in range(len(train_dataset.plane_indexs)):
                     cur_pred = pred_field_raw[:, :, plane_index, :, :]
@@ -236,7 +236,7 @@ def main(args, sample_data=False, train_shuffle=True):
                         "train/epoch": (step + 1 + (n_steps_per_epoch * ep)) / n_steps_per_epoch}
                 if step + 1 < n_steps_per_epoch and not args.close_wandb:
                     # Log train metrics to wandb 
-                    wandb.log(metrics)            
+                    wandb.log(metrics)
 
         observer_model.eval()
         test_l2, test_num = 0.0, 0
@@ -276,7 +276,7 @@ def main(args, sample_data=False, train_shuffle=True):
                     v_plane = torch.einsum('btxy -> bxyt', v_plane).unsqueeze(-1)
                     test_num += len(v_plane)
                     pred_field_raw = observer_model(v_plane, re)
-                    pred_field_raw = torch.einsum('bpxztk -> btpxz', pred_field_raw)
+                    pred_field_raw = torch.einsum('bpxzt -> btpxz', pred_field_raw)
                     pred_field_decoded = []
                     for plane_index in range(len(train_dataset.plane_indexs)):
                         cur_pred = pred_field_raw[:, :, plane_index, :, :]
