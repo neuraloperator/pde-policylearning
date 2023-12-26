@@ -323,7 +323,6 @@ def main(args, sample_data=False, train_shuffle=True):
         if not args.close_wandb:
             wandb.log(avg_metrics)
     
-        
     ################################################################
     # run control loop to evaluate trained model and exit program
     ################################################################

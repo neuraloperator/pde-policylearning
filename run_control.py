@@ -305,6 +305,9 @@ def run_control(args, observer_model=None, policy_model=None, train_dataset=None
         if i > 0:  # omit the first iter
             print_info = f"dPdx: {info['drag_reduction/3_3_dPdx_reverse_cal']:.7f}; DR: {1 - info['drag_reduction_relative/3_3_dPdx_reverse_cal']:.4f}"
             pbar.set_description(print_info)
+            # print("cur memory consumption info:")
+            # summary.print_(summary.summarize(muppy.get_objects()))
+            # import pdb; pdb.set_trace()
 
     ################################################################
     # save visualization results and finish the program.
@@ -323,9 +326,9 @@ def run_control(args, observer_model=None, policy_model=None, train_dataset=None
     if not args.close_wandb and not wandb_exist:
         wandb.finish()
     
-    # # analyzing memory
-    # print("memory consumption info:")
-    # summary.print_(summary.summarize(muppy.get_objects()))
+    # analyzing memory
+    print("memory consumption info:")
+    summary.print_(summary.summarize(muppy.get_objects()))
 
 
 if __name__ == '__main__':

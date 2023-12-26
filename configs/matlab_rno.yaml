@@ -2,7 +2,7 @@ DATA_FOLDER: './outputs/0076-gen-data'
 ntrain: 280
 ntest: 20
 project_name: 'control_v2'
-exp_name: '0077-pino-pc-div-check'
+exp_name: '0077-gt-long'
 path_name: planes_channel180_minchan
 run_control: true
 display_variables:
@@ -40,8 +40,8 @@ bc_type: original
 
 # policy setups
 policy_name:
-  # - gt
-  - optimal-observer
+  - gt
+  # - optimal-observer
   # - rno
   # - rand
   # - unmanipulated
@@ -82,9 +82,9 @@ output_dir: ./outputs
 width: 34  # 32 by default
 batch_size: 32
 layer_num: 1
-close_wandb: false
+close_wandb: true
 epochs: 100     # 100
-control_timestep: 10000
+control_timestep: 200000
 
 # # large model
 # batch_size: 32  # 20
