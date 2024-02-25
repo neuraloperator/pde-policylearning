@@ -17,42 +17,7 @@ def apply_boundary_condition(U, V, W, Vw1, Vw2):
     W[:, 0, :] = -W[:, 1, :]
     W[:, -1, :] = -W[:, -2, :]
     return U, V, W
-
-
-def compute_projection_step(U, V, W, dx, dz, ym, y, kxx, kzz, Nx, Ny, Nz, DD):
-    # Compute divergence of velocity field
-    p_matrix = torch.zeros((Nx, Ny - 1, Nz), dtype=U.dtype, device=U.device)
-    for j in range(Ny - 1):
-        ux = (torch.cat([U[1:, j + 1, :], U[0, j + 1, :][None, :]], dim=0) - U[:, j + 1, :]) / dx
-        uy = (V[:, j + 1, :] - V[:, j, :]) / (y[j + 1] - y[j])
-        uz = (torch.cat([W[:, j + 1, 1:], W[:, j + 1, 0][:, None]], dim=-1) - W[:, j + 1, :]) / dz
-        p_matrix[:, j, :] = ux + uy + uz
-    
-    # Solve Poisson equation for p, Fourier transform first
-    rhs_p_hat = torch.fft.fft(torch.fft.fft(p_matrix, dim=2), dim=0)
-    for i in range(Nx):
-        for j in range(Nz):
-            kk = kxx[i] + kzz[j]
-            D = DD + torch.eye(Ny-1) * kk
-
-            if i == 0 and j == 0:
-                D[0, 0] = 1.5 * D[0, 0]
-            rhs_p_hat[i, :, j] = torch.linalg.solve(torch.complex(D, torch.zeros_like(D)), rhs_p_hat[i, :, j].conj())
-    
-    # Inverse transform
-    p = torch.real(torch.fft.ifft(torch.fft.ifft(rhs_p_hat, dim=0), dim=2))
-    
-    # Apply fractional step
-    Uout = U.clone()
-    Vout = V.clone()
-    Wout = W.clone()
-
-    Uout[:, 1:-1, :] = Uout[:, 1:-1, :] - (p - torch.cat([p[-1, :, :][None, :, :], p[:-1, :, :]], dim=0)) / dx
-    for i in range(1, Ny-1):
-        Vout[:, i, :] = Vout[:, i, :] - (p[:, i, :] - p[:, i-1, :]) / (ym[i] - ym[i-1])
-    Wout[:, 1:-1, :] = Wout[:, 1:-1, :] - (p - torch.cat([p[:, :, -1][:, :, None], p[:, :, :-1]], dim=2)) / dz
-    return Uout, Vout, Wout
-    
+   
 
 class NSControlEnvMatlab:
     def __init__(self, args):
@@ -228,11 +193,48 @@ class NSControlEnvMatlab:
         div = np.array(div)
         return div
 
+    def compute_pressure_py(self,):
+        U, V, W, dt = torch.tensor(self.U), torch.tensor(self.V), torch.tensor(self.W), self.dt
+        RHS_u, RHS_v, RHS_w = self.compute_rhs_py(U, V, W, dPdx=None)
+        dx = torch.tensor(self.dx)
+        dz = torch.tensor(self.dz)
+        ym = torch.tensor(self.ym)
+        y = torch.tensor(self.y)
+        kxx = torch.tensor(self.kxx)
+        kzz = torch.tensor(self.kzz)
+        DD = torch.tensor(self.DD)
+        Nx, Ny, Nz, dPdx, meanU0 = self.Nx, self.Ny, self.Nz, self.dPdx, self.meanU0
+        
+        # Compute divergence
+        RHS_p = torch.zeros((Nx, Ny - 1, Nz), dtype=U.dtype, device=U.device)
+        for j in range(Ny - 1):
+            ux = (torch.cat([RHS_u[1:, j + 1, :], RHS_u[0, j + 1, :][None, :]], dim=0) - RHS_u[:, j + 1, :]) / dx
+            uy = (RHS_v[:, j + 1, :] - RHS_v[:, j, :]) / (y[j + 1] - y[j])
+            uz = (torch.cat([RHS_w[:, j + 1, 1:], RHS_w[:, j + 1, 0][:, None]], dim=-1) - RHS_w[:, j + 1, :]) / dz
+            RHS_p[:, j, :] = ux + uy + uz
+        
+        # Fourier transform and solve Poisson equasions
+        rhs_p_hat = torch.fft.fft(torch.fft.fft(RHS_p, dim=2), dim=0)
+        for i in range(Nx):
+            for j in range(Nz):
+                kk = kxx[i] + kzz[j]
+                D = DD + torch.eye(Ny-1) * kk
+
+                if i == 0 and j == 0:
+                    D[0, 0] = 1.5 * D[0, 0]
+                target = torch.complex(D, torch.zeros_like(D))
+                original_p = rhs_p_hat[i, :, j]
+                rhs_p_hat[i,:,j] = torch.linalg.solve(target, original_p)
+        P = torch.real(torch.fft.ifft(torch.fft.ifft(rhs_p_hat, dim=0), dim=2))
+        return P
+
     def cal_pressure(self,):
-        # this is the observation function
-        self.P  = self.eng.compute_pressure(to_m(self.U), to_m(self.V), to_m(self.W), to_m(self.nu), to_m(self.dPdx), to_m(self.y), to_m(self.ym), \
-            to_m(self.yg), to_m(self.dx), to_m(self.dz), to_m(self.kxx), to_m(self.kzz), to_m(self.Nx), to_m(self.Ny), to_m(self.Nz), to_m(self.DD))
-        self.P = np.array(self.P)
+        # # this is the observation function
+        # self.P  = self.eng.compute_pressure(to_m(self.U), to_m(self.V), to_m(self.W), to_m(self.nu), to_m(self.dPdx), to_m(self.y), to_m(self.ym), \
+        #     to_m(self.yg), to_m(self.dx), to_m(self.dz), to_m(self.kxx), to_m(self.kzz), to_m(self.Nx), to_m(self.Ny), to_m(self.Nz), to_m(self.DD))
+        # self.P = np.array(self.P)
+        P_py = self.compute_pressure_py()
+        self.P = P_py.numpy()
         return self.P
 
     def cal_dpdx_finite_difference(self, pressure_top):
@@ -424,11 +426,12 @@ class NSControlEnvMatlab:
         p2 = np.squeeze(-0.5 * (pressure[:, -1, :] + pressure[:, -2, :]))
         return p1, p2
     
-    def compute_rhs_py(self, U, V, W):
+    def compute_rhs_py(self, U, V, W, dPdx=None):
         ################################################################
         # prepare variables
         ################################################################
-        dPdx = self.dPdx
+        if dPdx is None:
+            dPdx = self.dPdx
         dx = torch.tensor(self.dx).to(U.device)
         dz = torch.tensor(self.dz).to(U.device)
         yg = torch.tensor(self.yg).to(U.device)
@@ -542,7 +545,7 @@ class NSControlEnvMatlab:
         
         # 1st RK step
         U, V, W = U0, V0, W0
-        Fu1, Fv1, Fw1 = self.compute_rhs_py(U, V, W)
+        Fu1, Fv1, Fw1 = self.compute_rhs_py(U, V, W, dPdx) 
         U = U0 + dt * 8 / 15 * Fu1
         V = V0 + dt * 8 / 15 * Fv1
         W = W0 + dt * 8 / 15 * Fw1
@@ -551,7 +554,7 @@ class NSControlEnvMatlab:
         U, V, W = apply_boundary_condition(U, V, W, opV1, opV2)
         
         # 2nd RK step
-        Fu2, Fv2, Fw2 = self.compute_rhs_py(U, V, W)
+        Fu2, Fv2, Fw2 = self.compute_rhs_py(U, V, W, dPdx)
         U = U0 + dt * (1 / 4 * Fu1 + 5 / 12 * Fu2)
         V = V0 + dt * (1 / 4 * Fv1 + 5 / 12 * Fv2)
         W = W0 + dt * (1 / 4 * Fw1 + 5 / 12 * Fw2)
@@ -560,7 +563,7 @@ class NSControlEnvMatlab:
         U, V, W = apply_boundary_condition(U, V, W, opV1, opV2)
 
         # 3rd RK step
-        Fu3, Fv3, Fw3 = self.compute_rhs_py(U, V, W)
+        Fu3, Fv3, Fw3 = self.compute_rhs_py(U, V, W, dPdx)
         U = U0 + dt * (1 / 4 * Fu1 + 3 / 4 * Fu3)
         V = V0 + dt * (1 / 4 * Fv1 + 3 / 4 * Fv3)
         W = W0 + dt * (1 / 4 * Fw1 + 3 / 4 * Fw3)
@@ -570,8 +573,6 @@ class NSControlEnvMatlab:
 
         # trapz equivalent in PyTorch
         dPdx_pre = dPdx
-        # y_values = torch.tensor([0.0] + ym.squeeze().tolist() + [2.0])
-        # trapz_result = torch.trapz(torch.cat([torch.zeros(1), torch.mean(torch.mean(U[:, 1:-1, :], dim=2), dim=0), torch.zeros(1)]), y_values)
         meanU_now = self.calculate_meanU(self.ym, U.numpy())
         dPdx = 2 * (meanU0 - meanU_now)
         U[:, 1:-1, :] = U[:, 1:-1, :] + dPdx / 2
@@ -579,38 +580,6 @@ class NSControlEnvMatlab:
         return U, V, W, dPdx
     
     def compute_projection_step(self, U, V, W, dx, dz, ym, y, kxx, kzz, Nx, Ny, Nz, DD):
-        # # Create a 3D matrix with regular values
-        # # dims = (3, 4, 3)
-        # dims = (32, 129, 32)
-        # t = 0.0000001 * np.arange(1, np.prod(dims) + 1).reshape(dims, order="F")
-
-        # # Apply FFT along the third dimension
-        # result_dim3 = np.fft.fft(t, axis=2)
-
-        # # Apply FFT along the first dimension
-        # res = np.fft.fft(result_dim3, axis=0)
-        # t = torch.tensor(t)
-        
-        # # # Apply FFT along the third dimension
-        # # result_dim3 = torch.fft.fft(t, dim=2)
-
-        # # # Apply FFT along the first dimension
-        # # res_torch = torch.fft.fft(result_dim3, dim=0)
-        
-        # rhs_p_hat_pre = torch.fft.fft(torch.fft.fft(t, dim=2), dim=0)
-        # rhs_p_hat = rhs_p_hat_pre.clone()
-        # for i in range(Nx):
-        #     for j in range(Nz):
-        #         kk = kxx[i] + kzz[j]
-        #         D = DD + torch.eye(Ny-1) * kk
-
-        #         if i == 0 and j == 0:
-        #             D[0, 0] = 1.5 * D[0, 0]
-        #         target = torch.complex(D, torch.zeros_like(D))
-        #         original_p = rhs_p_hat_pre[i, :, j].conj()
-        #         rhs_p_hat[i,:,j] = torch.linalg.solve(target, original_p).conj()
-        # p2 = torch.real(torch.fft.ifft(torch.fft.ifft(rhs_p_hat, dim=0), dim=2))
-        
         # Compute divergence of velocity field
         p_matrix = torch.zeros((Nx, Ny - 1, Nz), dtype=U.dtype, device=U.device)
         for j in range(Ny - 1):
@@ -618,10 +587,6 @@ class NSControlEnvMatlab:
             uy = (V[:, j + 1, :] - V[:, j, :]) / (y[j + 1] - y[j])
             uz = (torch.cat([W[:, j + 1, 1:], W[:, j + 1, 0][:, None]], dim=-1) - W[:, j + 1, :]) / dz
             p_matrix[:, j, :] = ux + uy + uz
-
-        # m_p_matrix, m_dx, m_dz, m_ym, m_y, m_kxx, m_kzz, m_Nx, m_Ny, m_Nz, m_DD = [to_m(value) for value in (p_matrix, dx, dz, ym, y, kxx, kzz, Nx, Ny, Nz, DD)]
-        # p = self.eng.solve_poisson(m_p_matrix, m_dx, m_dz, m_ym, m_y, m_kxx, m_kzz, m_Nx, m_Ny, m_Nz, m_DD)
-        # p1 = [torch.tensor(np.array(value)) for value in (p)][0]
 
         # Solve Poisson equation for p, Fourier transform first, then transform back
         rhs_p_hat = torch.fft.fft(torch.fft.fft(p_matrix, dim=2), dim=0)
@@ -635,24 +600,17 @@ class NSControlEnvMatlab:
                 target = torch.complex(D, torch.zeros_like(D))
                 original_p = rhs_p_hat[i, :, j]
                 rhs_p_hat[i,:,j] = torch.linalg.solve(target, original_p)
-        p2 = torch.real(torch.fft.ifft(torch.fft.ifft(rhs_p_hat, dim=0), dim=2))
-        p = p2
+        p = torch.real(torch.fft.ifft(torch.fft.ifft(rhs_p_hat, dim=0), dim=2))
         
         # Apply fractional step
         Uout = U.clone()
         Vout = V.clone()
         Wout = W.clone()
-
         Uout[:, 1:-1, :] = Uout[:, 1:-1, :] - (p - torch.cat([p[-1, :, :][None, :, :], p[:-1, :, :]], dim=0)) / dx
         for i in range(1, Ny-1):
             Vout[:, i, :] = Vout[:, i, :] - (p[:, i, :] - p[:, i-1, :]) / (ym[i] - ym[i-1])
         Wout[:, 1:-1, :] = Wout[:, 1:-1, :] - (p - torch.cat([p[:, :, -1][:, :, None], p[:, :, :-1]], dim=2)) / dz
-        
         return Uout, Vout, Wout
-        # U, V, W, dx, dz, ym, y, kxx, kzz, Nx, Ny, Nz, DD = [to_m(value) for value in (U, V, W, dx, dz, ym, y, kxx, kzz, Nx, Ny, Nz, DD)]
-        # U, V, W = self.eng.compute_projection_step(U, V, W, dx, dz, ym, y, kxx, kzz, Nx, Ny, Nz, DD, nargout=3)
-        # U, V, W = [torch.tensor(np.array(value)) for value in (U, V, W)]
-        # return U, V, W
         
     def step_rk3(self, opV1, opV2):
         Upy, Vpy, Wpy, dPdxpy = self.time_advance_RK3_py(opV1, opV2)
@@ -666,111 +624,12 @@ class NSControlEnvMatlab:
     # for physics informed learning
     ################################################################
     
-    def pde_loss(self, U, V, W, dPdx):
-        ################################################################
-        # prepare variables
-        ################################################################
-
-        dx = torch.tensor(self.dx).to(U.device)
-        dz = torch.tensor(self.dz).to(U.device)
-        yg = torch.tensor(self.yg).to(U.device)
-        y = torch.tensor(self.y).to(U.device)
-        ym = torch.tensor(self.ym).to(U.device)
-
-        ################################################################
-        # compute Fu
-        ################################################################
-    
-        # compute -d(uu)/dx
-        UU = (0.5 * (U + torch.cat([U[1:, :, :], U[0, :, :][None, :]], dim=0)))**2
-        Fu = - (UU - torch.cat([UU[-1, :, :][None, :], UU[:-1, :, :]], dim=0)) / dx
-        
-        # compute -d(uv)/dy
-        UV = (0.5 * (V + torch.cat([V[-1, :, :][None, :], V[:-1, :, :]], dim=0))) * (0.5 * (U[:, :-1, :] + U[:, 1:, :]))
-        for i in range(1, self.Ny):
-            Fu[:, i, :] -= (UV[:, i, :] - UV[:, i-1, :]) / (y[i] - y[i-1])
-        
-        # compute -d(uw) / dz
-        UW = (0.5 * (W + torch.cat([W[-1, :, :][None, :, :], W[:-1, :, :]], dim=0))) * (0.5 * (U + torch.cat([U[:, :, -1][:, :, None], U[:, :, :-1]], dim=2)))
-        Fu -= (torch.cat([UW[:, :, 1:], UW[:, :, 0][:, :, None]], dim=2) - UW)  / dz
-        
-        # compute 1/Re*d^2u/dx^2
-        Fu += self.nu * (torch.cat([U[1:, :, :], U[0, :, :][None, :, :]], dim=0) - 2 * U + torch.cat([U[-1, :, :][None, :, :], U[:-1, :, :]], dim=0)) / dx**2
-
-        # compute 1/Re*d^2u/dy^2
-        for i in range(1, self.Ny):
-            Fu[:, i, :] += self.nu * (
-                (U[:, i + 1, :] - U[:, i, :]) / (yg[i + 1] - yg[i]) -
-                (U[:, i, :] - U[:, i - 1, :]) / (yg[i] - yg[i - 1])
-            ) / (y[i] - y[i - 1])
-
-        # compute 1/Re*d^2u/dz^2
-        Fu += self.nu * (torch.cat([U[:, :, 1:], U[:, :, 0][:, :, None]], dim=2) - 2 * U + torch.cat([U[:, :, -1][:, :, None], U[:, :, :-1]], dim=2)) / dz**2
-
-        # Add pressure gradient
-        Fu += dPdx / 2
-
-        ################################################################
-        # compute Fv
-        ################################################################
-        
-        # compute -d(uv)/dx
-        UV = (0.5 * (V + torch.cat([V[-1, :, :][None, :, :], V[:-1, :, :]], dim=0))) * (0.5 * (U[:, :-1, :] + U[:, 1:, :]))
-        Fv = - (torch.cat([UV[1:, :, :], UV[0, :, :][None, :, :]], dim=0) - UV) / dx
-
-        # compute -d(vv)/dy
-        VV = (0.5 * (V[:, :-1, :] + V[:, 1:, :]))**2
-        for i in range(1, self.Ny - 1):
-            Fv[:, i, :] -= (VV[:, i, :] - VV[:, i-1, :]) / (ym[i] - ym[i-1])
-
-        # compute -d(vw)/dz
-        VW = (0.5 * (V + torch.cat([V[:, :, -1][:, :, None], V[:, :, :-1]], dim=2))) * (0.5 * (W[:, :-1, :] + W[:, 1:, :]))
-        Fv -= (torch.cat([VW[:, :, 1:], VW[:, :, 0][:, :, None]], dim=2) - VW) / dz
-        
-        # compute nu*d^2v/dx^2
-        Fv += self.nu * (torch.cat([V[1:, :, :], V[0, :, :][None, :, :]], dim=0) - 2 * V + torch.cat([V[-1, :, :][None, :, :], V[:-1, :, :]], dim=0)) / dx**2
-
-        # compute nu*d^2v/dy^2
-        for i in range(1, self.Ny - 1):
-            Fv[:, i, :] += self.nu * (
-                (V[:, i + 1, :] - V[:, i, :]) / (y[i + 1] - y[i]) -
-                (V[:, i, :] - V[:, i - 1, :]) / (y[i] - y[i - 1])
-            ) / (ym[i] - ym[i - 1])
-
-        # compute nu*d^2w/dz^2
-        Fv += self.nu * (torch.cat([V[:, :, 1:], V[:, :, 0][:, :, None]], dim=2) - 2 * V + torch.cat([V[:, :, -1][:, :, None], V[:, :, :-1]], dim=2)) / dz**2
-
-        ################################################################
-        # compute Fw
-        ################################################################
-        
-        # compute -d(uw)/dx
-        UW = (0.5 * (W + torch.cat([W[-1, :, :][None, :, :], W[:-1, :, :]], dim=0))) * (0.5 * (U + torch.cat([U[:, :, -1][:, :, None], U[:, :, :-1]], dim=-1)))
-        Fw = - (torch.cat([UW[1:, :, :], UW[0, :, :][None, :, :]], dim=0) - UW) / dx
-
-        # compute -d(vw)/dy
-        VW = (0.5 * (V + torch.cat([V[:, :, -1][:, :, None], V[:, :, :-1]], dim=-1))) * (0.5 * (W[:, :-1, :] + W[:, 1:, :]))
-        for i in range(1, self.Ny):
-            Fw[:, i, :] -= (VW[:, i, :]- VW[:, i-1, :]) / (y[i] - y[i - 1])
-
-        # compute -d(ww)/dz
-        WW = (0.5 * (W + torch.cat([W[:, :, 1:], W[:, :, 0][:, :, None]], dim=2)))**2
-        Fw -= (WW - torch.cat([WW[:, :, -1][:, :, None], WW[:, :, :-1]], dim=2)) / dz
-
-        # compute nu*d^2w/dx^2
-        Fw += self.nu * (torch.cat([W[1:, :, :], W[0, :, :][None, :, :]], dim=0) - 2 * W + torch.cat([W[-1, :, :][None, :, :], W[:-1, :, :]], dim=0)) / dx**2
-
-        # compute nu*d^2w/dy^2
-        for i in range(1, self.Ny):
-            Fw[:, i, :] += self.nu * (
-                (W[:, i + 1, :] - W[:, i, :]) / (yg[i + 1] - yg[i]) -
-                (W[:, i, :] - W[:, i - 1, :]) / (yg[i] - yg[i - 1])
-            ) / (y[i] - y[i - 1])
-
-        # compute nu*d^2w/dz^2
-        Fw += self.nu * (torch.cat([W[:, :, 1:], W[:, :, 0][:, :, None]], dim=-1) - 2 * W + torch.cat([W[:, :, -1][:, :, None], W[:, :, :-1]], dim=-1)) / dz**2
-        pde_loss = Fu.mean() + Fv.mean() + Fw.mean()
-        pde_loss = pde_loss.mean()
+    def pde_loss(self, U, Vgt, V, W, dPdx):
+        import pdb; pdb.set_trace()
+        Fu_gt, Fv_gt, Fw_gt = self.compute_rhs_py(U, Vgt, W, dPdx)
+        Fu_pred, Fv_pred, Fw_pred = self.compute_rhs_py(U, V, W, dPdx)
+        pde_loss = (Fu_gt - Fu_pred).norm() + (Fv_gt - Fv_pred).norm() + (Fw_gt - Fw_pred).norm()
+        import pdb; pdb.set_trace()
         return pde_loss
 
     ################################################################

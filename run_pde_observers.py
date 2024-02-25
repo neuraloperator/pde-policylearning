@@ -226,7 +226,7 @@ def main(args, sample_data=False, train_shuffle=True):
                 pde_loss = 0
                 if args.pde_loss_weight > 0:
                     for i in range(len(seq_u)):
-                        cur_pde_loss = control_env.pde_loss(seq_u[i].squeeze(), pred_full_field_v[i].squeeze(), seq_w[i].squeeze(), seq_dpdx[i].squeeze())
+                        cur_pde_loss = control_env.pde_loss(seq_u[i].squeeze(), seq_v.squeeze(), pred_full_field_v[i].squeeze(), seq_w[i].squeeze(), seq_dpdx[i].squeeze())
                         pde_loss += cur_pde_loss
                 loss = data_loss + pde_loss * args.pde_loss_weight
                 loss.backward()

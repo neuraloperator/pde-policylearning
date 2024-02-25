@@ -131,7 +131,7 @@ def run_control(args, observer_model=None, policy_model=None, train_dataset=None
     
     pressure_v, opV2_v, top_view_v, front_view_v, side_view_v, all_p_boundary, all_v_boundary = [], [], [], [], [], [], []
     metadata = {}
-    all_u_field, all_v_field, all_w_field, all_dpdx = [], [], [], []
+    all_u_field, all_v_field, all_w_field, all_dpdx, all_dudt = [], [], [], [], []
     for i in (pbar := tqdm(range(args.control_timestep + 1))):
         # pressure: [32, 32], opV2: [32, 32]
         if args.policy_name in ['fno', 'rno']:  # neural policies
@@ -282,6 +282,15 @@ def run_control(args, observer_model=None, policy_model=None, train_dataset=None
                 metadata[field_name]['mean'] = np.array(all_w_field).mean(0)
                 metadata[field_name]['std'] = np.array(all_w_field).std(0)
             np.save(os.path.join(collect_data_folder, f'metadata.npy'), metadata)
+            # (6) save du/dt field info
+            field_name = 'du_dt'
+            Fu, Fv, Fw = control_env.compute_rhs_py(torch.tensor(control_env.U), torch.tensor(control_env.V), torch.tensor(control_env.W))
+            np.save(os.path.join(collect_data_folder, f'{field_name}_{idx_str}.npy'), np.array(Fu))
+            if i < mean_num:
+                all_dudt.append(np.array(Fu))
+                metadata[field_name] = {}
+                metadata[field_name]['mean'] = np.array(all_dudt).mean(0)
+                metadata[field_name]['std'] = np.array(all_dudt).std(0)
         if abs(control_env.reward_div()) > 10:
             raise RuntimeError("Control exploded!")
         side_pressure, reward, done, info = control_env.step(opV1, opV2)
@@ -305,9 +314,6 @@ def run_control(args, observer_model=None, policy_model=None, train_dataset=None
         if i > 0:  # omit the first iter
             print_info = f"dPdx: {info['drag_reduction/3_3_dPdx_reverse_cal']:.7f}; DR: {1 - info['drag_reduction_relative/3_3_dPdx_reverse_cal']:.4f}"
             pbar.set_description(print_info)
-            # print("cur memory consumption info:")
-            # summary.print_(summary.summarize(muppy.get_objects()))
-            # import pdb; pdb.set_trace()
 
     ################################################################
     # save visualization results and finish the program.
