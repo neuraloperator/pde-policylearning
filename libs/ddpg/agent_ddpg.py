@@ -103,6 +103,7 @@ class DDPGAgent:
         
         # update actor
         actor_loss = - self.critic(states, self.actor(states)).mean()
+        # \Delta Q(s, mu_theta) = \Delta mu_theta(s) \Delta Q(s, a)
         self.actor_optimizer.zero_grad()
         actor_loss.backward()
         self.actor_optimizer.step()
