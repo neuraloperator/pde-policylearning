@@ -1,7 +1,5 @@
 function [Uout, Vout, Wout] = compute_projection_step(Uin,Vin,Win,dx,dz,ym,y,kxx,kzz,Nx,Ny,Nz,DD)
 
-% global dx dz ym y kxx kzz Nx Ny Nz DD
-
 % compute divergence of velocity field
 p = zeros(Nx,Ny-1,Nz);
 for i = 1:Ny-1
@@ -12,8 +10,7 @@ end
 
 % solve poisson equation for p
 % Fourier transform
-fft_p = fft(p,[],3);
-rhs_p_hat = fft(fft_p,[],1);
+rhs_p_hat = fft(fft(p,[],3),[],1);
 
 % solve Poisson equation in Fourier space
 for i = 1:Nx

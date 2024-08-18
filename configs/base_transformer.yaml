@@ -1,0 +1,61 @@
+DATA_FOLDER: './data/planes_channel180_minchan'
+project_name: 'fno_vs_unet'
+exp_name: '6-Transformer-based'
+path_name: planes_channel180_minchan
+model_name: Transformer2D
+learning_rate: 0.001
+weight_decay: 0.0001
+epochs: 500
+step_size: 100
+gamma: 0.5
+modes: 12
+width: 32
+close_wandb: true
+batch_size: 20
+downsample_rate: 1
+x_range: 32
+y_range: 32
+ntrain: 7500
+ntest: 2500
+use_v_plane: false
+use_patch: false
+timestep: 2
+recurrent_model: false
+random_split: false
+model:
+  node_feats: 1
+  edge_feats: null
+  pos_dim: 1
+  n_targets: 1
+  n_hidden: 96
+  num_feat_layers: 0
+  num_encoder_layers: 4
+  n_head: 1
+  pred_len: 0
+  n_freq_targets: 0
+  dim_feedforward: 192
+  feat_extract_type: null
+  attention_type: fourier
+  xavier_init: 0.001
+  diagonal_weight: 0.01
+  symmetric_init: False
+  layer_norm: False
+  attn_norm: True
+  batch_norm: False
+  spacial_residual: False
+  return_attn_weight: False
+  return_latent: False
+  residual_type: plus
+  seq_len: null
+  bulk_regression: False
+  decoder_type: ifft
+  freq_dim: 48
+  num_regressor_layers: 2
+  fourier_modes: 16
+  spacial_dim: 1
+  spacial_fc: False
+  dropout: 0.0
+  encoder_dropout: 0.0
+  ffn_dropout: 0.0
+  decoder_dropout: 0.0
+  debug: False

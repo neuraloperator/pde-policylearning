@@ -1,0 +1,94 @@
+DATA_FOLDER: './outputs/0077-add-dudt'
+ntrain: 280
+ntest: 20
+project_name: 'control_v2'
+exp_name: '0077-add-dudt'
+path_name: planes_channel180_minchan
+run_control: true
+display_variables:
+  - exp_name
+  - policy_name
+  - pde_loss_weight
+  - model_timestep
+
+# # control setups: opposition control
+# env_name: NSControlEnvMatlab
+# model_name: RNO2dObserver
+# dataset_name: SequentialPDEDataset
+
+# control setups: optimal control
+env_name: NSControlEnvMatlab
+model_name: PINObserverFullField
+dataset_name: FullFieldNSDataset
+
+# other control settings
+init_cond_path: ./data/channel180_minchan_mf.mat  # original
+# init_cond_path: ./data/channel180_2pi_pi.mat  # large scale
+# init_cond_path: ./outputs/flow_900.npy  # will increase drag
+vis_sample_img: false
+noise_scale: 0.0
+detect_plane: 24  # get velocity from detect plane
+test_plane: -25  # not used
+w_weight: 0.0
+x_range: 32
+y_range: 32
+fix_flow: true
+Re: -1  # use default Re
+bc_type: original
+
+# policy setups
+policy_name:
+  # - gt
+  - optimal-observer
+  # - rno
+  # - rand
+  # - unmanipulated
+  # - optimal-policy-observer
+  # - fno
+rand_scale: 1
+reward_type: mse
+collect_data: true  # collect dataset
+collect_start: 0  # wait for some initialization steps
+full_field: true  # predict the full velocity field
+dump_state: false  # used to produce different initialization conditions
+
+# learning settings
+pde_loss_weight: 1.0  # open physics-informed learning for a pde loss > 0
+use_spectral_conv: false
+learning_rate: 0.001
+weight_decay: 0.0001
+step_size: 100
+gamma: 0.5
+modes: 12
+width: 32  # 32 by default
+downsample_rate: 1
+use_v_plane: false
+use_patch: false
+model_timestep: 1
+recurrent_model: true
+recurrent_index: 0
+random_split: false
+plane_indexs: [-10, -8, -6]
+
+# visualization settings
+vis_frame: -1  # 60 by default, set to -1 to close
+vis_interval: -1  # default, will be overwritten.
+show_spatial_dist_interval: 50
+output_dir: ./outputs
+
+# small model
+width: 34  # 32 by default
+batch_size: 32
+layer_num: 1
+close_wandb: true
+epochs: 100     # 100
+control_timestep: 2000
+# control_timestep: 200000
+
+# # large model
+# batch_size: 32  # 20
+# width: 64
+# layer_num: 10
+# close_wandb: false
+# epochs: 200
+# control_timestep: 100

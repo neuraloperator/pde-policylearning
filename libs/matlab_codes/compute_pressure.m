@@ -27,8 +27,5 @@ for i = 1:Nx
     end
 end
 
-
 % Transform back to physical space to get pressure
 P = real(permute(ifft2(RHS_p_hat),[1,3,2]));
-
-P = squeeze(-0.5*(P(:,end,:)+P(:,end-1,:)));

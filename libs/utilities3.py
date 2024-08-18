@@ -72,10 +72,15 @@ class MatReader(object):
 
 # normalization, pointwise gaussian
 class NormalizerGivenMeanStd(object):
-    def __init__(self, mean, std, eps=0.00001, time_last=True):
+    def __init__(self, mean, std, plane_indexs=None, eps=0.00001, time_last=True):
         super(NormalizerGivenMeanStd, self).__init__()
         # x could be in shape of ntrain*n or ntrain*T*n or ntrain*n*T in 1D
         # x could be in shape of ntrain*w*l or ntrain*T*w*l or ntrain*w*l*T in 2D
+        if plane_indexs is not None:
+            mean = mean[:, plane_indexs, :]
+            std = std[:, plane_indexs, :]
+        if np.sum(abs(mean - eps)) < eps:
+            raise RuntimeError("Provided mean is zero!")
         self.mean = torch.tensor(mean)
         self.mean_cuda = torch.tensor(mean).cuda()
         self.std = torch.tensor(std)
@@ -85,6 +90,10 @@ class NormalizerGivenMeanStd(object):
 
     def encode(self, x):
         x = (x - self.mean) / (self.std + self.eps)
+        return x
+    
+    def cuda_encode(self, x):
+        x = (x - self.mean_cuda) / (self.std_cuda + self.eps)
         return x
 
     def decode(self, x, sample_idx=None):
@@ -313,7 +322,6 @@ class LpLoss(object):
 
     def rel(self, x, y):
         num_examples = x.size()[0]
-
         diff_norms = torch.norm(x.reshape(num_examples,-1) - y.reshape(num_examples,-1), self.p, 1)
         y_norms = torch.norm(y.reshape(num_examples,-1), self.p, 1)
 

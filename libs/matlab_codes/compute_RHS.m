@@ -1,10 +1,8 @@
-function [Fu, Fv, Fw] = compute_RHS(U, V, W,nu,dx,dz,y,ym,yg,Ny,dPdx)
-%% Find RHS of the 2D-NS equation
-% Fu = - d(uu)/dx -d(uv)/dy + 1/Re*du/dx + 1/Re*du/dy 
-% Fv = - d(uv)/dx -d(vv)/dy + 1/Re*dv/dx + 1/Re*dv/dy 
-
-% global variables
-% global nu dx dz y ym yg Ny dPdx
+function [Fu, Fv, Fw] = compute_RHS(U, V, W, nu, dx, dz, y, ym, yg, Ny, dPdx)
+%% Find RHS of the 3D-NS equation
+% Fu = -d(uu)/dx -d(uv)/dy -d(uw)/dz + 1/Re*(du/dx + du/dy + du/dz)
+% Fv = -d(uv)/dx -d(vv)/dy -d(vw)/dz + 1/Re*(dv/dx + dv/dy + dv/dz)
+% Fw = -d(uw)/dx -d(vw)/dy -d(ww)/dz + 1/Re*(dw/dx + dw/dy + dw/dz)
 
 % compute Fu
 Fu = zeros(size(U));
@@ -19,7 +17,7 @@ end
 % compute -d(uw)/dz 
 UW = (0.5*(W + W([end,1:end-1],:,:))).*(0.5*(U + U(:,:,[end,1:end-1])));
 Fu = Fu - (UW(:,:,[2:end,1]) - UW)/dz;
-% compute 1/Re*d^2u/dx^2 
+% compute 1/Re*d^2u/dx^2
 Fu = Fu + nu * ( U([2:end,1],:,:) - 2*U + U([end,1:end-1],:,:) )/dx^2;
 % compute 1/Re*d^2u/dz^2
 for i = 2:Ny
@@ -32,17 +30,13 @@ end
 Fu = Fu + nu * ( U(:,:,[2:end,1]) - 2*U + U(:,:,[end,1:end-1]) )/dz^2;
 
 % add pressure gradient
-Fu = Fu + dPdx;
-
-% boundary conditions
-Fu(:,  1,:) = -Fu(:,    2,:);
-Fu(:,end,:) = -Fu(:,end-1,:);
+Fu = Fu + dPdx/2;
 
 % compute Fv
 Fv = zeros(size(V));
 % compute -d(uv)/dx
 UV = (0.5*(V + V([end,1:end-1],:,:))).*(0.5*(U(:,1:end-1,:) + U(:,2:end,:)));
-Fv = Fv - (UV - UV([end,1:end-1],:,:))/dx;
+Fv = Fv - (UV([2:end,1],:,:) - UV)/dx;
 % compute -d(vv)/dy
 VV = (0.5*(V(:,1:end-1,:) + V(:,2:end,:))).^2;
 for i = 2:Ny-1
@@ -50,7 +44,7 @@ for i = 2:Ny-1
 end
 % compute -(vw)/dz
 VW = (0.5*(V + V(:,:,[end,1:end-1]))).*(0.5*(W(:,1:end-1,:) + W(:,2:end,:)));
-Fv = Fv - (VW - VW(:,:,[end,1:end-1]))/dz;
+Fv = Fv - (VW(:,:,[2:end,1]) - VW)/dz;
 % compute nu*d^2v/dx^2
 Fv = Fv + nu * ( V([2:end,1],:,:) - 2*V + V([end,1:end-1],:,:) )/dx^2;
 for i = 2:Ny-1
@@ -61,9 +55,6 @@ for i = 2:Ny-1
 end
 % compute nu*d^2w/dz^2
 Fv = Fv + nu * ( V(:,:,[2:end,1]) - 2*V + V(:,:,[end,1:end-1]) )/dz^2;
-% boundary condition
-Fv(:,  1,:) = 0;
-Fv(:,end,:) = 0;
 
 % compute Fw
 Fw = zeros(size(W));
@@ -80,7 +71,6 @@ WW = (0.5*(W + W(:,:,[2:end,1]))).^2;
 Fw = Fw - (WW - WW(:,:,[end,1:end-1]))/dz;
 % compute nu*d^2w/dx^2
 Fw = Fw + nu * ( W([2:end,1],:,:) - 2*W + W([end,1:end-1],:,:) )/dx^2;
-
 % compute nu*d^2w/dz^2
 for i = 2:Ny
     Fw(:,i,:) = Fw(:,i,:) + nu * ...
@@ -90,8 +80,4 @@ for i = 2:Ny
 end
 % compute nu*d^2w/dz^2
 Fw = Fw + nu * ( W(:,:,[2:end,1]) - 2*W + W(:,:,[end,1:end-1]) )/dz^2;
-% boundary conditions
-Fw(:,  1,:) = -Fw(:,    2,:);
-Fw(:,end,:) = -Fw(:,end-1,:);
-
 end

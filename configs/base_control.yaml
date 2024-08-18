@@ -1,0 +1,44 @@
+project_name: control_v2
+load_model_name: planes_channel180_minchan_28-RNO-reproduce.pth
+# load_model_name: planes_channel180_minchan_31-FNO-reproduce.pth
+exp_name: 10-RNO
+display_variables:
+  - exp_name
+  - policy_name
+  - noise_scale
+  - control_timestep
+DATA_FOLDER: ./data/planes_channel180_minchan
+path_name: planes_channel180_minchan
+model_name: FNO2dObserver
+state_path_name: ./data/channel180_minchan.mat  # original
+use_v_plane: false
+modes: 12
+width: 32
+vis_sample_img: false
+control_timestep: 200
+model_timestep: 1
+noise_scale: 0.0
+use_spectral_conv: false
+downsample_rate: 1
+x_range: 32
+y_range: 32
+# policy_name: rno
+# policy_name: fno
+# policy_name: rand
+# policy_name: unmanipulated
+policy_name: gt
+rand_scale: 1   # this is for rand policy
+reward_type: mse
+collect_data: true  # collect dataset
+dump_state: false
+
+# environmental settings:
+detect_plane: -10  # get velocity from detect plane
+test_plane: -25
+w_weight: 0.8
+
+# visualization setttings
+vis_frame: 60
+vis_interval: 1000  # default, will be overwritten.
+output_dir: ./outputs
+close_wandb: false

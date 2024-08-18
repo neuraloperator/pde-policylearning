@@ -1,0 +1,79 @@
+DATA_FOLDER: './outputs/33-fix-rate'
+ntrain: 180
+ntest: 20
+project_name: 'control_v2'
+exp_name: '58-add pressure'
+path_name: planes_channel180_minchan
+model_name: RNO2dObserver
+display_variables:
+  - exp_name
+  - policy_name
+  - control_timestep
+  - model_timestep
+  - Re
+
+# control setups
+env_name: NSControlEnv2D
+# init_cond_path: ./data/channel180_minchan.mat  # original
+init_cond_path: ./outputs/flow_900.npy
+vis_sample_img: false
+noise_scale: 0.0
+detect_plane: -10  # get velocity from detect plane
+test_plane: -25  # not used
+w_weight: 0.0
+x_range: 32
+y_range: 32
+fix_flow: true
+# Re: 5000
+Re: 3000
+bc_type: original
+
+# policy setups
+policy_name:
+  - gt
+  # - rand
+  - unmanipulated
+  # - rno`
+  # - fno
+rand_scale: 1
+reward_type: mse
+collect_data: false  # collect dataset
+dump_state: false  # used to produce different initialization conditions
+
+# learning settings
+use_spectral_conv: false
+learning_rate: 0.001
+weight_decay: 0.0001
+step_size: 100
+gamma: 0.5
+modes: 12
+width: 32  # 32 by default
+downsample_rate: 1
+use_v_plane: false
+use_patch: false
+model_timestep: 1
+recurrent_model: true
+recurrent_index: 0
+random_split: false
+
+# visualization settings
+vis_frame: -1  # 60 by default, set to -1 to close
+vis_interval: 1000  # default, will be overwritten.
+show_spatial_dist_interval: 50
+output_dir: ./outputs
+
+# small model
+width: 34  # 32 by default
+batch_size: 32
+layer_num: 1
+close_wandb: true
+epochs: 200
+control_timestep: 300
+
+# # large model
+# batch_size: 32  # 20
+# width: 64
+# layer_num: 10
+# close_wandb: false
+# epochs: 200
+# control_timestep: 100

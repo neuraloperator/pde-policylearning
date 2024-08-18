@@ -5,7 +5,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.nn.parameter import Parameter
-from libs.fno_models import SpectralConv2d
+from libs.models.fno_models import SpectralConv2d
 import matplotlib.pyplot as plt
 
 
