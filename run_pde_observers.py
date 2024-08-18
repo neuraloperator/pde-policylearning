@@ -1,7 +1,3 @@
-"""
-@author: Zongyi Li
-This file is the Fourier Neural Operator for the 2D Navier—Stokes problem discussed in Section 5.3 in the [paper](https://arxiv.org/pdf/2010.08895.pdf).
-"""
 ################################################################
 # Connecting to WandB 
 ################################################################
@@ -96,11 +92,9 @@ n_steps_per_epoch = math.ceil(len(train_loader.dataset) / batch_size)
 # create model
 ################################################################
 model_name = 'UNet'
-assert model_name in ['UNet', 'FNO2dObserverOld', 'FNO2dObserver'], "Model not supported!"
+assert model_name in ['UNet','FNO2dObserver'], "Model not supported!"
 use_spectral_conv = False
-if model_name == 'FNO2dObserverOld':
-    model = FNO2dObserverOld(modes, modes, width, use_v_plane=use_v_plane).cuda()
-elif model_name == 'FNO2dObserver':
+if model_name == 'FNO2dObserver':
     model = FNO2dObserver(modes, modes, width, use_v_plane=use_v_plane).cuda()
 else:
     model = UNet(use_spectral_conv=use_spectral_conv).cuda()

@@ -29,7 +29,7 @@ width = 32
 debug = True
 timestep = 1000
 noise_scale = 1.0
-assert model_name in ['UNet', 'FNO2dObserverOld', 'FNO2dObserver'], "Model not supported!"
+assert model_name in ['UNet', 'FNO2dObserver'], "Model not supported!"
 use_spectral_conv = False
 
 '''
@@ -115,9 +115,7 @@ print("Load model ...")
 ################################################################
 # create model
 ################################################################
-if model_name == 'FNO2dObserverOld':
-    model = FNO2dObserverOld(modes, modes, width, use_v_plane=use_v_plane).cuda()
-elif model_name == 'FNO2dObserver':
+if model_name == 'FNO2dObserver':
     model = FNO2dObserver(modes, modes, width, use_v_plane=use_v_plane).cuda()
 else:
     model = UNet(use_spectral_conv=use_spectral_conv).cuda()
