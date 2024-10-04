@@ -2,7 +2,7 @@ import torch
 import numpy as np
 import torch.nn as nn
 import torch.nn.functional as F
-from libs.models.fno_models import SpectralConv2d
+from libs.models.pino_models import SpectralConv2d
 from libs.models.transformer_models import SpectralRegressor
 from libs.utilities3 import *
 from neuralop.models import RNO2d
